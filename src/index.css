@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+  --color-gold-50: #FBF7EE;
+  --color-gold-100: #F3E9D2;
+  --color-gold-500: #D4AF37;
+  --color-gold-600: #B89728;
+  --color-gold-700: #94751A;
+  --color-dark: #121212;
+  --color-dark-card: #1E1E1E;
+}
+
+body {
+  background-color: #F9FAFB;
+  color: #111827;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
