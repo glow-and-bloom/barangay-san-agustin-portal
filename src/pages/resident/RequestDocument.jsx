@@ -2,19 +2,18 @@ import React, { useState } from 'react';
 
 export default function RequestDocument({ onSubmitRequest, loading, successMsg }) {
   const [docType, setDocType] = useState('barangay_clearance');
-  const [purpose, setPurpose] = useState('');
+  const [purpose, setPurpose] = useState('Local Employment Requirement');
 
   const handleSubmit = (e) => {
     e.preventDefault();
     onSubmitRequest(docType, purpose);
-    setPurpose('');
   };
 
   return (
     <div className="max-w-2xl bg-white p-8 rounded-2xl border border-gray-200 shadow-sm space-y-6">
       <div>
         <h2 className="text-xl font-bold text-gray-900">Online Document Application</h2>
-        <p className="text-xs text-gray-500 mt-1">Select document type and provide purpose for official processing.</p>
+        <p className="text-xs text-gray-500 mt-1">Select document type and official purpose for processing.</p>
       </div>
 
       {successMsg && (
@@ -29,7 +28,7 @@ export default function RequestDocument({ onSubmitRequest, loading, successMsg }
           <select
             value={docType}
             onChange={(e) => setDocType(e.target.value)}
-            className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-gold-500 focus:border-gold-500"
+            className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-amber-500 focus:border-amber-500"
           >
             <option value="barangay_clearance">Barangay Clearance</option>
             <option value="indigency">Certificate of Indigency</option>
@@ -41,14 +40,19 @@ export default function RequestDocument({ onSubmitRequest, loading, successMsg }
 
         <div>
           <label className="block text-xs font-bold uppercase text-gray-700 mb-1">Purpose of Request</label>
-          <textarea
-            required
-            rows={4}
+          <select
             value={purpose}
             onChange={(e) => setPurpose(e.target.value)}
-            placeholder="e.g. Local employment requirement, Scholarship application, Postal ID application"
-            className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-gold-500 focus:border-gold-500"
-          />
+            className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-amber-500 focus:border-amber-500"
+          >
+            <option value="Local Employment Requirement">Local Employment Requirement</option>
+            <option value="Scholarship Application">Scholarship Application</option>
+            <option value="Postal ID / Valid ID Application">Postal ID / Valid ID Application</option>
+            <option value="Bank / Financial Transaction">Bank / Financial Transaction</option>
+            <option value="Medical / Hospital Assistance">Medical / Hospital Assistance</option>
+            <option value="Business Registration / Permit">Business Registration / Permit</option>
+            <option value="Other Official Purposes">Other Official Purposes</option>
+          </select>
         </div>
 
         <div className="bg-amber-50 p-4 rounded-xl text-xs text-amber-800 border border-amber-200">
@@ -58,7 +62,7 @@ export default function RequestDocument({ onSubmitRequest, loading, successMsg }
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-black hover:bg-gray-800 text-gold-500 font-extrabold py-3.5 rounded-xl border border-gold-500 shadow transition"
+          className="w-full bg-black hover:bg-gray-800 text-amber-400 font-extrabold py-3.5 rounded-xl border border-amber-500 shadow transition"
         >
           {loading ? 'Submitting Application...' : 'Submit Document Request'}
         </button>

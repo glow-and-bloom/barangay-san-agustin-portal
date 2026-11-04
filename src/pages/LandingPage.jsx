@@ -17,21 +17,54 @@ import {
   Sparkles,
   ArrowUpRight
 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 export default function LandingPage({ onNavigate, projects = [] }) {
   const [searchTracking, setSearchTracking] = useState('');
   const [searchResult, setSearchResult] = useState(null);
+  const [searchError, setSearchError] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
 
-  const handleQuickSearch = (e) => {
+  const handleQuickSearch = async (e) => {
     e.preventDefault();
     if (!searchTracking.trim()) return;
-    // Demo quick lookup response
-    setSearchResult({
-      id: searchTracking.toUpperCase(),
-      status: 'Ready for Pickup',
-      document: 'Barangay Clearance',
-      date: 'Oct 28, 2026'
-    });
+
+    setIsSearching(true);
+    setSearchError('');
+    setSearchResult(null);
+
+    try {
+      const { data, error } = await supabase
+        .from('document_requests')
+        .select('*')
+        .ilike('tracking_number', searchTracking.trim())
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (data) {
+        setSearchResult({
+          id: data.tracking_number,
+          status: data.status,
+          document: data.document_type?.replace(/_/g, ' ').toUpperCase(),
+          date: new Date(data.created_at).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          isPaid: data.is_paid
+        });
+      } else {
+        setSearchError('Walang nakitang kahilingan gamit ang Tracking ID na ito.');
+      }
+    } catch (err) {
+      console.error('Error searching request:', err.message);
+      setSearchError('May naganap na error sa paghahanap.');
+    } finally {
+      setIsSearching(false);
+    }
   };
 
   return (
@@ -96,7 +129,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
 
       {/* 3. HERO SECTION */}
       <section className="relative bg-black text-white py-20 lg:py-28 overflow-hidden border-b border-gold-500/20">
-        {/* Glow Effects */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-gold-500/10 blur-[120px] rounded-full pointer-events-none"></div>
         <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#D4AF37_1px,transparent_1px)] [background-size:24px_24px]"></div>
 
@@ -137,18 +169,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
                   <span>Public Budget Portal</span>
                 </a>
               </div>
-
-              {/* Verified Badge */}
-              <div className="pt-6 border-t border-white/10 flex items-center justify-center lg:justify-start space-x-6 text-xs text-gray-400">
-                <div className="flex items-center space-x-2">
-                  <ShieldCheck size={18} className="text-gold-500" />
-                  <span>Official Municipal Integration</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Award size={18} className="text-gold-500" />
-                  <span>ISO-Standard Recordkeeping</span>
-                </div>
-              </div>
             </div>
 
             {/* Right Quick Search / Card */}
@@ -177,21 +197,44 @@ export default function LandingPage({ onNavigate, projects = [] }) {
                       />
                       <button 
                         type="submit"
+                        disabled={isSearching}
                         className="absolute right-2 top-2 bg-gold-500 text-black px-3 py-1.5 rounded-lg font-extrabold text-xs hover:bg-gold-600 transition"
                       >
-                        Search
+                        {isSearching ? 'Searching...' : 'Search'}
                       </button>
                     </div>
                   </div>
                 </form>
 
+                {searchError && (
+                  <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400 text-center">
+                    {searchError}
+                  </div>
+                )}
+
                 {searchResult && (
-                  <div className="mt-4 p-4 bg-gold-500/10 border border-gold-500/30 rounded-2xl space-y-1">
-                    <p className="text-xs text-gray-400">Tracking Code: <span className="font-mono font-bold text-white">{searchResult.id}</span></p>
-                    <p className="text-sm font-bold text-gold-500">{searchResult.document}</p>
+                  <div className="mt-4 p-4 bg-gold-500/10 border border-gold-500/30 rounded-2xl space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-400">Tracking Code:</span>
+                      <span className="font-mono font-bold text-white text-xs">{searchResult.id}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-400">Document:</span>
+                      <span className="font-bold text-gold-500 text-xs">{searchResult.document}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-gray-400">Date/Time:</span>
+                      <span className="text-gray-300 text-xs">{searchResult.date}</span>
+                    </div>
                     <div className="flex justify-between items-center pt-2 border-t border-gold-500/20 text-xs">
                       <span className="text-gray-300">Status:</span>
-                      <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded font-bold">{searchResult.status}</span>
+                      <span className={`px-2 py-0.5 rounded font-bold uppercase text-[10px] ${
+                        searchResult.status === 'completed' ? 'bg-green-500/20 text-green-400' :
+                        searchResult.status === 'ready_for_pickup' ? 'bg-blue-500/20 text-blue-400' :
+                        'bg-amber-500/20 text-amber-400'
+                      }`}>
+                        {searchResult.status === 'ready_for_pickup' ? 'Ready for Pickup' : searchResult.status}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -217,7 +260,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
       {/* 4. SERVICES GRID */}
       <section id="services" className="py-20 bg-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
           <div className="text-center max-w-3xl mx-auto mb-16 space-y-3">
             <span className="text-xs font-bold text-gold-600 uppercase tracking-widest bg-gold-50 px-3 py-1 rounded-full border border-gold-200">
               E-SERVICES DIRECTORY
@@ -231,8 +273,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            
-            {/* Service Item 1 */}
             <div className="p-6 rounded-2xl bg-gray-50 border border-gray-200 hover:border-gold-500 hover:shadow-xl transition-all group">
               <div className="w-12 h-12 rounded-xl bg-black text-gold-500 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
                 <FileText size={24} />
@@ -247,7 +287,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
               </button>
             </div>
 
-            {/* Service Item 2 */}
             <div className="p-6 rounded-2xl bg-gray-50 border border-gray-200 hover:border-gold-500 hover:shadow-xl transition-all group">
               <div className="w-12 h-12 rounded-xl bg-black text-gold-500 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
                 <Users size={24} />
@@ -262,7 +301,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
               </button>
             </div>
 
-            {/* Service Item 3 */}
             <div className="p-6 rounded-2xl bg-gray-50 border border-gray-200 hover:border-gold-500 hover:shadow-xl transition-all group">
               <div className="w-12 h-12 rounded-xl bg-black text-gold-500 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
                 <Building2 size={24} />
@@ -277,7 +315,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
               </button>
             </div>
 
-            {/* Service Item 4 */}
             <div className="p-6 rounded-2xl bg-gray-50 border border-gray-200 hover:border-gold-500 hover:shadow-xl transition-all group">
               <div className="w-12 h-12 rounded-xl bg-black text-gold-500 flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
                 <Award size={24} />
@@ -291,7 +328,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
                 <ArrowUpRight size={14} />
               </button>
             </div>
-
           </div>
         </div>
       </section>
@@ -299,7 +335,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
       {/* 5. PUBLIC TRANSPARENCY DASHBOARD SECTION */}
       <section id="transparency" className="py-20 bg-gray-100 border-t border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
             <div>
               <span className="text-xs font-bold text-gold-600 uppercase tracking-widest">GOOD GOVERNANCE & ACCOUNTABILITY</span>
@@ -357,7 +392,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
               </table>
             </div>
           </div>
-
         </div>
       </section>
 
@@ -365,7 +399,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
       <footer id="contact" className="bg-black text-gray-400 pt-16 pb-8 border-t-2 border-gold-500 mt-auto">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-10 mb-12">
-            
             <div className="space-y-4 md:col-span-1">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 rounded-xl bg-gold-500 flex items-center justify-center text-black font-extrabold text-lg">
@@ -414,7 +447,6 @@ export default function LandingPage({ onNavigate, projects = [] }) {
                 </li>
               </ul>
             </div>
-
           </div>
 
           <div className="pt-8 border-t border-gray-800 text-center text-xs text-gray-500 flex flex-col sm:flex-row justify-between items-center gap-4">

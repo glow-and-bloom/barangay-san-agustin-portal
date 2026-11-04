@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
 
-// Auth Pages (Hiwalay)
+// Auth Pages
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 
-// Sidebars & Layout
-import ResidentSidebar from './components/ResidentSidebar';
+// Layouts & Sidebars
+import ResidentLayout from './layouts/ResidentLayout';
 import AdminSidebar from './components/AdminSidebar';
 
 // Pages
@@ -109,36 +109,68 @@ export default function App() {
   const handleDocumentSubmit = async (docType, purpose) => {
     setLoading(true);
     setSuccessMsg('');
-    const { data: resData } = await supabase.from('residents').select('id').eq('profile_id', session.user.id).single();
-    const trackingNumber = `REQ-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
 
-    const { error } = await supabase.from('document_requests').insert([{
-      tracking_number: trackingNumber,
-      resident_id: resData ? resData.id : null,
-      document_type: docType,
-      purpose,
-      status: 'pending',
-      fee_amount: docType === 'first_time_job_seeker' ? 0.00 : 50.00
-    }]);
+    try {
+      const { data: resData } = await supabase
+        .from('residents')
+        .select('id')
+        .eq('profile_id', session.user.id)
+        .single();
 
-    if (!error) {
+      const trackingNumber = `REQ-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      const payload = {
+        tracking_number: trackingNumber,
+        resident_id: resData ? resData.id : null,
+        requested_by: session.user.id,
+        document_type: docType,
+        purpose,
+        status: 'pending',
+        fee_amount: docType === 'first_time_job_seeker' ? 0.00 : 50.00
+      };
+
+      const { error } = await supabase.from('document_requests').insert([payload]);
+
+      if (error) throw error;
+
       setSuccessMsg(`Document request submitted successfully! Tracking No: ${trackingNumber}`);
       fetchResidentRequests(session.user.id);
-    } else {
-      alert(`Error submitting request: ${error.message}`);
+    } catch (err) {
+      console.error('Error submitting request:', err.message);
+      alert(`Error submitting request: ${err.message}`);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
-  const handleUpdateStatus = async (reqId, status, orNo = '') => {
+  const handleUpdateStatus = async (reqId, status, extraData = {}) => {
     const payload = { status };
+
+    if (extraData.pickup_date) {
+      payload.pickup_date = extraData.pickup_date;
+    }
+
     if (status === 'completed') {
       payload.is_paid = true;
-      payload.payment_reciept_no = orNo;
+      if (extraData.orNo) {
+        payload.payment_reciept_no = extraData.orNo;
+      }
       payload.paid_at = new Date().toISOString();
     }
-    const { error } = await supabase.from('document_requests').update(payload).eq('id', reqId);
-    if (!error) {
+
+    console.log("Submitting update for ID:", reqId, "Payload:", payload);
+
+    const { data, error } = await supabase
+      .from('document_requests')
+      .update(payload)
+      .eq('id', reqId)
+      .select();
+
+    if (error) {
+      console.error('Supabase Update Error Details:', error);
+      alert(`Update failed: ${error.message}`);
+    } else {
+      console.log('Successfully updated in Supabase:', data);
       fetchAdminRequests();
     }
   };
@@ -151,7 +183,7 @@ export default function App() {
     return <LoginPage onNavigate={(view) => setCurrentView(view)} onLoginSuccess={fetchProfile} />;
   }
 
-if (currentView === 'register') {
+  if (currentView === 'register') {
     return (
       <RegisterPage 
         onNavigate={(view) => {
@@ -162,16 +194,20 @@ if (currentView === 'register') {
       />
     );
   }
-  if (currentView === 'resident') {
+
+if (currentView === 'resident') {
     return (
-      <div className="min-h-screen bg-zinc-100 flex">
-        <ResidentSidebar activeTab={residentTab} setActiveTab={setResidentTab} onLogout={handleLogout} userEmail={profile?.email || session?.user?.email} />
-        <main className="flex-grow p-8 overflow-y-auto max-w-7xl">
-          {residentTab === 'dashboard' && <ResidentDashboard requests={myRequests} />}
-          {residentTab === 'request' && <RequestDocument onSubmitRequest={handleDocumentSubmit} loading={loading} successMsg={successMsg} />}
-          {residentTab === 'profile' && <ResidentProfile profile={profile} />}
-        </main>
-      </div>
+      <ResidentLayout 
+        activeTab={residentTab} 
+        setActiveTab={setResidentTab} 
+        onLogout={handleLogout} 
+        residentName={profile?.first_name || session?.user?.email}
+        userEmail={session?.user?.email}
+      >
+        {residentTab === 'dashboard' && <ResidentDashboard requests={myRequests} />}
+        {residentTab === 'request' && <RequestDocument onSubmitRequest={handleDocumentSubmit} loading={loading} successMsg={successMsg} />}
+        {residentTab === 'profile' && <ResidentProfile profile={profile} />}
+      </ResidentLayout>
     );
   }
 

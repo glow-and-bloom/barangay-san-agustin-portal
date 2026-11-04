@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, UserPlus, X, Phone, MapPin, CheckCircle2, ShieldAlert, Heart, HeartOff, Users, Eye } from 'lucide-react';
+import { Search, UserPlus, X, Phone, MapPin, CheckCircle2, ShieldAlert, Heart, HeartOff, Users, Eye, Trash2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
 export default function ResidentRecords({ residents = [], onRefresh }) {
@@ -132,6 +132,21 @@ export default function ResidentRecords({ residents = [], onRefresh }) {
     }
   };
 
+  // DELETE RESIDENT FUNCTION
+  const handleDeleteResident = async (id, residentName) => {
+    const confirmed = window.confirm(`Are you sure you want to delete the record for ${residentName}? This action cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase.from('residents').delete().eq('id', id);
+      if (error) throw error;
+
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      alert(`Failed to delete resident record: ${err.message}`);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* HEADER & ACTION BUTTON */}
@@ -188,6 +203,7 @@ export default function ResidentRecords({ residents = [], onRefresh }) {
               {filteredResidents.length > 0 ? (
                 filteredResidents.map((res) => {
                   const age = calculateAge(res.birth_date);
+                  const fullNameStr = `${res.first_name} ${res.last_name}`;
                   return (
                     <tr key={res.id} className="hover:bg-zinc-50/70 transition-colors">
                       <td className="p-3.5 font-bold text-zinc-900">
@@ -241,13 +257,24 @@ export default function ResidentRecords({ residents = [], onRefresh }) {
                         )}
                       </td>
                       <td className="p-3.5 text-right">
-                        <button
-                          onClick={() => setSelectedResident(res)}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-900 hover:text-amber-400 text-zinc-700 font-bold rounded-lg text-xs transition-all shadow-sm"
-                        >
-                          <Eye size={13} />
-                          <span>View</span>
-                        </button>
+                        <div className="inline-flex items-center gap-1.5 justify-end">
+                          <button
+                            onClick={() => setSelectedResident(res)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-zinc-100 hover:bg-zinc-900 hover:text-amber-400 text-zinc-700 font-bold rounded-lg text-xs transition-all shadow-sm"
+                            title="View Record"
+                          >
+                            <Eye size={13} />
+                            <span>View</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteResident(res.id, fullNameStr)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 font-bold rounded-lg text-xs transition-all shadow-sm border border-rose-200"
+                            title="Delete Record"
+                          >
+                            <Trash2 size={13} />
+                            <span>Delete</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
