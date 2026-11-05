@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle2, Eye, FileText, X, Printer, Edit3 } from 'lucide-react';
+import { Search, CheckCircle2, Eye, FileText, X, Printer, Edit3, Building2 } from 'lucide-react';
 
 export default function ManageRequests({ requests = [], onUpdateStatus }) {
   const [search, setSearch] = useState('');
@@ -16,10 +16,13 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
     purok: '',
     purpose: '',
     issueDate: '',
-    captainName: 'HON. BARANGAY CAPTAIN'
+    captainName: 'HON. BARANGAY CAPTAIN',
+    businessName: '',
+    businessType: '',
+    businessAddress: ''
   });
 
-  // Otomatikong i-populate ang Certificate Details kapag nag-View Document
+  // Otomatikong i-populate ang Certificate Details pati Business info kapag binuksan ang modal
   useEffect(() => {
     if (viewCertReq) {
       const fullName = viewCertReq.residents 
@@ -29,16 +32,20 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
       setCertDetails({
         residentName: fullName,
         purok: viewCertReq.residents?.purok || '---',
-        purpose: viewCertReq.purpose || 'Legal/Official Purposes',
+        purpose: viewCertReq.purpose || 'Business Permit Application',
         issueDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-        captainName: 'HON. BARANGAY CAPTAIN'
+        captainName: 'HON. BARANGAY CAPTAIN',
+        businessName: viewCertReq.business_name || 'N/A',
+        businessType: viewCertReq.business_type || 'N/A',
+        businessAddress: viewCertReq.business_address || `Purok ${viewCertReq.residents?.purok || ''}, Barangay San Agustin`
       });
     }
   }, [viewCertReq]);
 
   const filtered = requests.filter(r => 
     r.tracking_number?.toLowerCase().includes(search.toLowerCase()) ||
-    r.document_type?.toLowerCase().includes(search.toLowerCase())
+    r.document_type?.toLowerCase().includes(search.toLowerCase()) ||
+    r.business_name?.toLowerCase().includes(search.toLowerCase())
   );
 
   const isPaidDocument = (docType) => {
@@ -75,9 +82,11 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
     onUpdateStatus(reqId, 'completed', {});
   };
 
+  const isBusinessPermit = viewCertReq?.document_type === 'business_permit_clearance';
+
   return (
-    <div className="space-y-6">
-      {/* STRICT PRINT CONFIGURATION TO HIDE HEADERS/FOOTERS AND FIT ONE PAGE */}
+    <div className="space-y-6 font-sans">
+      {/* PRINT STYLING */}
       <style>{`
         @page {
           size: portrait;
@@ -97,7 +106,7 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
             width: 100% !important;
             height: 100% !important;
             margin: 0 !important;
-            padding: 15mm !important;
+            padding: 12mm !important;
             background: white !important;
             box-shadow: none !important;
             border: none !important;
@@ -119,10 +128,10 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
             <Search size={16} className="absolute left-3 top-3 text-gray-400" />
             <input
               type="text"
-              placeholder="Search tracking no or type..."
+              placeholder="Search tracking no, type, or business..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-xl text-xs"
+              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-xl text-xs outline-none focus:border-amber-500"
             />
           </div>
         </div>
@@ -151,6 +160,11 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
                       <td className="p-3 font-mono font-bold">{req.tracking_number}</td>
                       <td className="p-3 font-medium">
                         {req.residents ? `${req.residents.first_name} ${req.residents.last_name}` : 'Resident'}
+                        {req.business_name && (
+                          <span className="block text-[10px] text-amber-700 font-bold flex items-center gap-1 mt-0.5">
+                            <Building2 size={10} /> {req.business_name}
+                          </span>
+                        )}
                       </td>
                       <td className="p-3 uppercase font-semibold">{req.document_type?.replace(/_/g, ' ')}</td>
                       <td className="p-3 text-gray-500">
@@ -208,7 +222,7 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
                               setPickupTime(d.toTimeString().slice(0, 5));
                             }
                           }}
-                          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow flex items-center space-x-1"
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow flex items-center space-x-1 cursor-pointer"
                         >
                           <Eye size={12} />
                           <span>View Document</span>
@@ -218,14 +232,14 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
                           requiresPayment ? (
                             <button 
                               onClick={() => setSelectedPayReq(req)} 
-                              className="bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow"
+                              className="bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow cursor-pointer"
                             >
                               Pay & Release
                             </button>
                           ) : (
                             <button 
                               onClick={() => handleDirectRelease(req.id)} 
-                              className="bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow flex items-center space-x-1"
+                              className="bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow flex items-center space-x-1 cursor-pointer"
                             >
                               <CheckCircle2 size={12} />
                               <span>Mark Collected</span>
@@ -254,181 +268,268 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
 
       {/* MODAL CONTAINER: SIDE-BY-SIDE VIEW & EDIT CERTIFICATE */}
       {viewCertReq && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="bg-transparent max-w-6xl w-full relative my-6">
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-3 z-50 overflow-y-auto">
+          <div className="bg-transparent max-w-6xl w-full relative my-auto">
             
-            {/* CLOSE BUTTON FOR MODAL */}
             <button 
               onClick={() => setViewCertReq(null)}
-              className="absolute -top-10 right-0 text-white hover:text-gray-300 no-print bg-black/50 p-2 rounded-full"
+              className="absolute -top-10 right-0 text-white hover:text-gray-300 no-print bg-black/50 p-2 rounded-full cursor-pointer"
             >
               <X size={20} />
             </button>
 
-            {/* TWO COLUMN GRID LAYOUT */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
               
-              {/* KALIWANG GILID (LEFT SIDE): EDIT DETAILS + PICKUP CONTROLS */}
-              <div className="lg:col-span-5 space-y-4 no-print">
-                
-                {/* 1. EDIT CERTIFICATE DETAILS PANEL */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl space-y-3">
-                  <div className="flex items-center space-x-2 border-b pb-2 text-gray-800">
-                    <Edit3 size={16} className="text-blue-600" />
-                    <h4 className="text-xs font-black uppercase tracking-wider">Edit Certificate Details</h4>
+              {/* KALIWANG GILID (LEFT SIDE): COMPACT EDIT DETAILS + PICKUP CONTROLS */}
+              <div className="lg:col-span-5 space-y-3 no-print max-h-[90vh] overflow-y-auto pr-1">
+                <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xl space-y-2.5">
+                  <div className="flex items-center space-x-2 border-b pb-1.5 text-gray-800">
+                    <Edit3 size={15} className="text-blue-600" />
+                    <h4 className="text-xs font-black uppercase tracking-wider">
+                      Edit {isBusinessPermit ? 'Business Permit' : 'Certificate'} Details
+                    </h4>
                   </div>
 
-                  <div className="space-y-3 text-xs">
+                  <div className="space-y-2 text-xs">
+                    {/* 1. OWNER / RESIDENT FULL NAME */}
                     <div>
-                      <label className="block text-[11px] font-bold text-gray-600 mb-1">Resident Full Name</label>
+                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Owner / Resident Full Name</label>
                       <input
                         type="text"
                         value={certDetails.residentName}
                         onChange={(e) => setCertDetails({...certDetails, residentName: e.target.value})}
-                        className="w-full border border-gray-300 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-blue-600"
+                        className="w-full border border-gray-300 rounded-lg p-2 text-xs font-bold focus:outline-none focus:border-blue-600"
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-[11px] font-bold text-gray-600 mb-1">Purok / Address</label>
-                      <input
-                        type="text"
-                        value={certDetails.purok}
-                        onChange={(e) => setCertDetails({...certDetails, purok: e.target.value})}
-                        className="w-full border border-gray-300 rounded-xl p-2.5 text-xs focus:outline-none focus:border-blue-600"
-                      />
-                    </div>
+                    {/* BUSINESS PERMIT CLEARANCE SPECIFIC FIELDS */}
+                    {isBusinessPermit ? (
+                      <>
+                        {/* 2. BUSINESS NAME */}
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Business Name</label>
+                          <input
+                            type="text"
+                            value={certDetails.businessName}
+                            onChange={(e) => setCertDetails({...certDetails, businessName: e.target.value})}
+                            className="w-full border border-gray-300 rounded-lg p-2 text-xs font-bold text-blue-900 focus:outline-none focus:border-blue-600"
+                          />
+                        </div>
 
+                        {/* 3. NATURE / TYPE OF BUSINESS */}
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Nature / Type of Business</label>
+                          <input
+                            type="text"
+                            value={certDetails.businessType}
+                            onChange={(e) => setCertDetails({...certDetails, businessType: e.target.value})}
+                            className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:outline-none focus:border-blue-600"
+                          />
+                        </div>
+
+                        {/* 4. BUSINESS ADDRESS / LOCATION */}
+                        <div>
+                          <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Business Address / Location</label>
+                          <input
+                            type="text"
+                            value={certDetails.businessAddress}
+                            onChange={(e) => setCertDetails({...certDetails, businessAddress: e.target.value})}
+                            className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:outline-none focus:border-blue-600"
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      /* REGULAR CERTIFICATE FIELD */
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Purok / Resident Address</label>
+                        <input
+                          type="text"
+                          value={certDetails.purok}
+                          onChange={(e) => setCertDetails({...certDetails, purok: e.target.value})}
+                          className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:outline-none focus:border-blue-600"
+                        />
+                      </div>
+                    )}
+
+                    {/* 5. PURPOSE / REASON */}
                     <div>
-                      <label className="block text-[11px] font-bold text-gray-600 mb-1">Purpose / Reason</label>
+                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Purpose / Reason</label>
                       <textarea
-                        rows={2}
+                        rows={1}
                         value={certDetails.purpose}
                         onChange={(e) => setCertDetails({...certDetails, purpose: e.target.value})}
-                        className="w-full border border-gray-300 rounded-xl p-2.5 text-xs focus:outline-none focus:border-blue-600"
+                        className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:outline-none focus:border-blue-600 resize-none"
                       />
                     </div>
 
+                    {/* 6. DATE ISSUED TEXT */}
                     <div>
-                      <label className="block text-[11px] font-bold text-gray-600 mb-1">Date Issued Text</label>
+                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Date Issued Text</label>
                       <input
                         type="text"
                         value={certDetails.issueDate}
                         onChange={(e) => setCertDetails({...certDetails, issueDate: e.target.value})}
-                        className="w-full border border-gray-300 rounded-xl p-2.5 text-xs focus:outline-none focus:border-blue-600"
+                        className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:outline-none focus:border-blue-600"
                       />
                     </div>
 
+                    {/* 7. SIGNATORY (CAPTAIN NAME) */}
                     <div>
-                      <label className="block text-[11px] font-bold text-gray-600 mb-1">Signatory (Captain Name)</label>
+                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Signatory (Captain Name)</label>
                       <input
                         type="text"
                         value={certDetails.captainName}
                         onChange={(e) => setCertDetails({...certDetails, captainName: e.target.value})}
-                        className="w-full border border-gray-300 rounded-xl p-2.5 text-xs font-bold focus:outline-none focus:border-blue-600"
+                        className="w-full border border-gray-300 rounded-lg p-2 text-xs font-bold focus:outline-none focus:border-blue-600"
                       />
                     </div>
                   </div>
                 </div>
 
-                {/* 2. PICKUP SCHEDULE & PRINT CONTROL BOX */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xl space-y-4">
-                  <p className="text-[11px] font-black text-gray-800 uppercase tracking-wider">
+                {/* PICKUP SCHEDULE & PRINT CONTROL BOX */}
+                <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xl space-y-3">
+                  <p className="text-[10px] font-black text-gray-800 uppercase tracking-wider">
                     SET PICKUP SCHEDULE & READY FOR PRINT:
                   </p>
                   
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[11px] font-bold text-gray-600 mb-1">Pickup Date</label>
+                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Pickup Date</label>
                       <input 
                         type="date" 
                         value={pickupDate} 
                         onChange={(e) => setPickupDate(e.target.value)} 
-                        className="w-full border border-gray-300 rounded-xl p-2.5 text-xs bg-white focus:outline-none focus:border-blue-600 font-medium" 
+                        className="w-full border border-gray-300 rounded-lg p-2 text-xs bg-white focus:outline-none focus:border-blue-600 font-medium" 
                       />
                     </div>
                     <div>
-                      <label className="block text-[11px] font-bold text-gray-600 mb-1">Pickup Time</label>
+                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Pickup Time</label>
                       <input 
                         type="time" 
                         value={pickupTime} 
                         onChange={(e) => setPickupTime(e.target.value)} 
-                        className="w-full border border-gray-300 rounded-xl p-2.5 text-xs bg-white focus:outline-none focus:border-blue-600 font-medium" 
+                        className="w-full border border-gray-300 rounded-lg p-2 text-xs bg-white focus:outline-none focus:border-blue-600 font-medium" 
                       />
                     </div>
                   </div>
 
-                  <div className="pt-3 border-t flex justify-end space-x-2">
+                  <div className="pt-2 border-t flex justify-end space-x-2">
                     <button 
                       onClick={() => setViewCertReq(null)} 
-                      className="px-4 py-2 border border-gray-300 text-xs rounded-xl font-bold text-gray-700 bg-white hover:bg-gray-100 transition"
+                      className="px-3 py-1.5 border border-gray-300 text-xs rounded-xl font-bold text-gray-700 bg-white hover:bg-gray-100 transition cursor-pointer"
                     >
                       Close
                     </button>
                     <button 
                       onClick={handlePrintAndReady} 
-                      className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-xl font-bold shadow-md flex items-center space-x-2 transition"
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-xl font-bold shadow-md flex items-center space-x-1.5 transition cursor-pointer"
                     >
-                      <Printer size={15} />
-                      <span>Print & Set Ready for Pickup</span>
+                      <Printer size={14} />
+                      <span>Print & Ready</span>
                     </button>
                   </div>
                 </div>
-
               </div>
 
-              {/* KANANG GILID (RIGHT SIDE): REAL-TIME PRINTABLE CERTIFICATE PREVIEW */}
+              {/* KANANG GILID (RIGHT SIDE): PRINTABLE PREVIEW */}
               <div className="lg:col-span-7">
-                <div id="printable-certificate" className="bg-white p-8 space-y-5 text-black border border-gray-200 rounded-2xl shadow-2xl">
-                  <div className="text-center space-y-1 border-b-2 border-black pb-3">
-                    <p className="text-[11px] uppercase font-bold tracking-widest text-gray-700">Republic of the Philippines</p>
-                    <p className="text-[11px] uppercase font-semibold text-gray-700">Province of Zambales • Municipality of Castillejos</p>
-                    <h2 className="text-lg font-black tracking-wider text-black pt-0.5">BARANGAY SAN AGUSTIN</h2>
-                    <h3 className="text-xs font-extrabold text-blue-900 uppercase tracking-wide">
+                <div id="printable-certificate" className="bg-white p-6 space-y-4 text-black border border-gray-200 rounded-2xl shadow-2xl">
+                  
+                  {/* HEADER SECTION */}
+                  <div className="text-center space-y-1 border-b-2 border-black pb-2">
+                    <p className="text-[10px] uppercase font-bold tracking-widest text-gray-700">Republic of the Philippines</p>
+                    <p className="text-[10px] uppercase font-semibold text-gray-700">Province of Zambales • Municipality of Castillejos</p>
+                    <h2 className="text-base font-black tracking-wider text-black pt-0.5">BARANGAY SAN AGUSTIN</h2>
+                    <h3 className="text-[11px] font-extrabold text-blue-900 uppercase tracking-wide">
                       OFFICE OF THE PUNONG BARANGAY
                     </h3>
-                    <h4 className="text-xl font-black uppercase text-black pt-2 tracking-wider underline underline-offset-4">
-                      {viewCertReq.document_type?.replace(/_/g, ' ')}
+                    <h4 className="text-lg font-black uppercase text-black pt-1 tracking-wider underline underline-offset-4">
+                      {isBusinessPermit ? 'BARANGAY BUSINESS CLEARANCE' : viewCertReq.document_type?.replace(/_/g, ' ')}
                     </h4>
                   </div>
 
-                  <div className="space-y-3.5 text-xs md:text-sm text-black leading-relaxed pt-1">
-                    <p className="italic text-[11px] font-mono text-gray-600">Tracking No: {viewCertReq.tracking_number}</p>
-                    
-                    <p className="font-bold pt-1">TO WHOM IT MAY CONCERN:</p>
-                    
-                    <p className="text-justify indent-6 leading-relaxed">
-                      This is to certify that <span className="font-bold underline uppercase">{certDetails.residentName}</span>, 
-                      of legal age, is a permanent resident of Purok {certDetails.purok}, Barangay San Agustin, Castillejos, Zambales.
-                    </p>
-
-                    {viewCertReq.document_type?.toLowerCase().includes('business') && (
+                  {/* KUNG BUSINESS PERMIT CLEARANCE - KUSTOMISADONG BUSINESS LAYOUT */}
+                  {isBusinessPermit ? (
+                    <div className="space-y-3 text-xs text-black leading-relaxed">
+                      <p className="italic text-[10px] font-mono text-gray-600">Tracking No: {viewCertReq.tracking_number}</p>
+                      
+                      <p className="font-bold pt-0.5">TO WHOM IT MAY CONCERN:</p>
+                      
                       <p className="text-justify indent-6 leading-relaxed">
-                        This certification is granted for the operation and establishment of their business enterprise within the jurisdiction of Barangay San Agustin, subject to existing local ordinances.
+                        Clearance is hereby granted to the business establishment specified below pursuant to existing Barangay Tax Ordinances and regulations within the territorial jurisdiction of Barangay San Agustin, Castillejos, Zambales.
                       </p>
-                    )}
 
-                    {viewCertReq.document_type?.toLowerCase().includes('indigency') && (
+                      {/* BUSINESS SPECIFIC DETAILS BOX */}
+                      <div className="my-2 p-3 border-2 border-black bg-gray-50/50 rounded-xl space-y-1.5">
+                        <div className="grid grid-cols-12">
+                          <span className="col-span-4 font-bold uppercase text-[10px]">Business Name:</span>
+                          <span className="col-span-8 font-black text-xs uppercase text-blue-950">{certDetails.businessName}</span>
+                        </div>
+                        <div className="grid grid-cols-12">
+                          <span className="col-span-4 font-bold uppercase text-[10px]">Nature of Business:</span>
+                          <span className="col-span-8 font-bold uppercase text-[11px]">{certDetails.businessType}</span>
+                        </div>
+                        <div className="grid grid-cols-12">
+                          <span className="col-span-4 font-bold uppercase text-[10px]">Business Location:</span>
+                          <span className="col-span-8 font-semibold text-[11px]">{certDetails.businessAddress}</span>
+                        </div>
+                        <div className="grid grid-cols-12">
+                          <span className="col-span-4 font-bold uppercase text-[10px]">Owner / Operator:</span>
+                          <span className="col-span-8 font-bold uppercase text-[11px]">{certDetails.residentName}</span>
+                        </div>
+                      </div>
+
                       <p className="text-justify indent-6 leading-relaxed">
-                        This further certifies that the above-named resident belongs to an indigent family in this community and is in need of financial or medical assistance.
+                        This Business Clearance is issued upon request of the interested party for <span className="font-bold italic">"{certDetails.purpose}"</span> and for securing municipal business permits and licenses.
                       </p>
-                    )}
 
-                    <p className="text-justify indent-6 leading-relaxed">
-                      This certification/clearance is issued upon the request of the interested party for <span className="font-bold italic">"{certDetails.purpose}"</span> and for whatever legal intent it may serve.
-                    </p>
+                      <p className="text-justify indent-6 leading-relaxed text-[10px] text-gray-700 italic">
+                        Note: This clearance shall be revoked if there is any violation of municipal and barangay laws, ordinances, or public safety standards.
+                      </p>
 
-                    <p className="text-right pt-4 font-semibold">
-                      Given this {certDetails.issueDate} at Barangay San Agustin, Castillejos, Zambales.
-                    </p>
-                  </div>
+                      <p className="text-right pt-1 font-semibold">
+                        Given this {certDetails.issueDate} at Barangay San Agustin, Castillejos, Zambales.
+                      </p>
+                    </div>
+                  ) : (
+                    /* ORDINARY CERTIFICATE LAYOUT */
+                    <div className="space-y-3 text-xs text-black leading-relaxed">
+                      <p className="italic text-[10px] font-mono text-gray-600">Tracking No: {viewCertReq.tracking_number}</p>
+                      
+                      <p className="font-bold pt-0.5">TO WHOM IT MAY CONCERN:</p>
+                      
+                      <p className="text-justify indent-6 leading-relaxed">
+                        This is to certify that <span className="font-bold underline uppercase">{certDetails.residentName}</span>, 
+                        of legal age, is a permanent resident of Purok {certDetails.purok}, Barangay San Agustin, Castillejos, Zambales.
+                      </p>
 
-                  <div className="pt-8 flex justify-end text-center">
-                    <div className="w-56 space-y-1">
-                      <div className="border-b-2 border-black pb-1 font-bold uppercase">{certDetails.captainName}</div>
-                      <p className="text-[11px] text-gray-600 font-medium">Punong Barangay</p>
+                      {viewCertReq.document_type?.toLowerCase().includes('indigency') && (
+                        <p className="text-justify indent-6 leading-relaxed">
+                          This further certifies that the above-named resident belongs to an indigent family in this community and is in need of financial or medical assistance.
+                        </p>
+                      )}
+
+                      <p className="text-justify indent-6 leading-relaxed">
+                        This certification/clearance is issued upon the request of the interested party for <span className="font-bold italic">"{certDetails.purpose}"</span> and for whatever legal intent it may serve.
+                      </p>
+
+                      <p className="text-right pt-3 font-semibold">
+                        Given this {certDetails.issueDate} at Barangay San Agustin, Castillejos, Zambales.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* SIGNATURE SECTION */}
+                  <div className="pt-4 flex justify-between items-end">
+                    <div className="w-32 text-center border border-gray-400 p-1.5 text-[9px] text-gray-500">
+                      Official Seal / Thumb Mark
+                    </div>
+                    <div className="w-48 space-y-0.5 text-center">
+                      <div className="border-b-2 border-black pb-0.5 font-bold uppercase text-xs">{certDetails.captainName}</div>
+                      <p className="text-[10px] text-gray-600 font-medium">Punong Barangay</p>
                     </div>
                   </div>
+
                 </div>
               </div>
 
@@ -451,18 +552,18 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
               placeholder="Official Receipt (OR) No." 
               value={orNo} 
               onChange={(e) => setOrNo(e.target.value)} 
-              className="w-full border border-gray-300 rounded-xl p-2.5 text-xs focus:outline-none focus:border-black font-mono" 
+              className="w-full border border-gray-300 rounded-xl p-2.5 text-xs outline-none focus:border-black font-mono" 
             />
             <div className="flex justify-end space-x-2 pt-2">
               <button 
                 onClick={() => setSelectedPayReq(null)} 
-                className="px-3 py-1.5 border border-gray-300 text-xs rounded-lg font-bold text-gray-700 hover:bg-gray-50"
+                className="px-3 py-1.5 border border-gray-300 text-xs rounded-lg font-bold text-gray-700 hover:bg-gray-50 cursor-pointer"
               >
                 Cancel
               </button>
               <button 
                 onClick={handleReleasePayment} 
-                className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs rounded-lg font-bold shadow"
+                className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs rounded-lg font-bold shadow cursor-pointer"
               >
                 Confirm Release
               </button>
