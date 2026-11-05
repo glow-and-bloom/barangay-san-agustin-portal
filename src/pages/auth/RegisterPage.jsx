@@ -6,12 +6,19 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
   const [email, setEmail] = useState('');
   const [otpCode, setOtpCode] = useState('');
   const [password, setPassword] = useState('');
+  const [householdLeaders, setHouseholdLeaders] = useState([]);
   
   useEffect(() => {
     if (setIsRegistering) {
       setIsRegistering(true);
     }
+    fetchHouseholdLeaders();
   }, [setIsRegistering]);
+
+  const fetchHouseholdLeaders = async () => {
+    const { data } = await supabase.from('residents').select('id, first_name, last_name, household_number').eq('is_head_of_household', true);
+    if (data) setHouseholdLeaders(data);
+  };
 
   // Resident Form Fields (Step 3)
   const [regData, setRegData] = useState({
@@ -26,7 +33,10 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
     household_number: '',
     street_address: '',
     purok: 'Purok 1',
+    residency_type: 'since_birth', // since_birth | custom
+    years_of_residency: '',
     is_head_of_household: false,
+    household_leader_id: '',
     voter_status: 'registered',
     is_pwd: false,
     pwd_id_number: '',
@@ -71,7 +81,7 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
     }
   };
 
-  // STEP 2: Verify Code (Lumilipat lang sa Step 3 Form nang hindi ginagalaw ang app navigation)
+  // STEP 2: Verify Code
   const handleVerifyOtp = async (e) => {
     e.preventDefault();
     setMessage({ text: '', type: '' });
@@ -106,7 +116,7 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
     }
   };
 
-  // STEP 3: Complete Registration (Dito lang magse-save sa DB tables)
+  // STEP 3: Complete Registration
   const handleCompleteRegistration = async (e) => {
     e.preventDefault();
     setMessage({ text: '', type: '' });
@@ -119,7 +129,6 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
     setIsLoading(true);
 
     try {
-      // 1. Kunin ang session na ginawa nung nag-verify sa Step 2
       const { data: { session } } = await supabase.auth.getSession();
       
       if (!session || !session.user) {
@@ -128,11 +137,9 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
 
       const userId = session.user.id;
 
-      // 2. I-set ang password sa Auth user
       const { error: updateErr } = await supabase.auth.updateUser({ password: password });
       if (updateErr) throw updateErr;
 
-      // 3. I-save sa profiles table
       await supabase.from('profiles').upsert([{
         id: userId,
         first_name: regData.first_name.trim(),
@@ -141,7 +148,6 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
         role: 'resident'
       }]);
 
-      // 4. I-save sa residents table para lumabas sa Admin Dashboard
       const residentPayload = {
         profile_id: userId,
         full_name: `${regData.first_name.trim()} ${regData.last_name.trim()}`,
@@ -157,7 +163,10 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
         household_number: regData.household_number.trim() || 'HH-PENDING',
         street_address: regData.street_address.trim() || null,
         purok: regData.purok || 'Purok 1',
+        residency_type: regData.residency_type,
+        years_of_residency: regData.residency_type === 'since_birth' ? null : (parseInt(regData.years_of_residency) || 0),
         is_head_of_household: Boolean(regData.is_head_of_household),
+        household_leader_id: regData.is_head_of_household ? null : (regData.household_leader_id || null),
         voter_status: (regData.voter_status || 'registered').toLowerCase(),
         is_pwd: Boolean(regData.is_pwd),
         pwd_id_number: regData.is_pwd ? regData.pwd_id_number.trim() : null,
@@ -169,7 +178,6 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
       const { error: resError } = await supabase.from('residents').insert([residentPayload]);
       if (resError) throw resError;
 
-      // Tapos na ang registration: i-sign out para bumalik sa Login screen nang malinis
       await supabase.auth.signOut();
       if (setIsRegistering) setIsRegistering(false);
 
@@ -205,7 +213,7 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
           <div className="space-y-4">
             <div className="text-center">
               <h2 className="text-2xl font-black text-zinc-900">Step 1: Email Verification</h2>
-              <p className="text-xs text-zinc-500 mt-1">Enter your active Gmail address to receive a 6-digit verification code.</p>
+              <p className="text-xs text-zinc-500 mt-1">Enter your active Gmail address to receive a 6-digit verification code[cite: 13].</p>
             </div>
             <form onSubmit={handleSendOtp} className="space-y-4 text-xs">
               <div>
@@ -235,7 +243,7 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
           <div className="space-y-4">
             <div className="text-center">
               <h2 className="text-2xl font-black text-zinc-900">Step 2: Verification Code</h2>
-              <p className="text-xs text-zinc-500 mt-1">We sent a 6-digit code to <strong>{email}</strong>.</p>
+              <p className="text-xs text-zinc-500 mt-1">We sent a 6-digit code to <strong>{email}</strong>[cite: 13].</p>
             </div>
             <form onSubmit={handleVerifyOtp} className="space-y-4 text-xs">
               <div>
@@ -336,9 +344,9 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
               </div>
             </div>
 
-            {/* Address */}
+            {/* Address, Length of Residency, & Household */}
             <div className="space-y-2 border-b pb-3">
-              <h3 className="font-extrabold uppercase text-amber-600 tracking-wider">Residence Address</h3>
+              <h3 className="font-extrabold uppercase text-amber-600 tracking-wider">Residence Address & Length of Stay</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-zinc-700 uppercase mb-1">Household No. *</label>
@@ -360,6 +368,55 @@ export default function RegisterPage({ onNavigate, setIsRegistering }) {
                   <input type="text" value={regData.street_address} onChange={(e) => setRegData({ ...regData, street_address: e.target.value })} className="w-full border border-zinc-300 p-2 rounded-xl" placeholder="Main St." />
                 </div>
               </div>
+
+              {/* LENGTH OF RESIDENCY FIELD */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <div>
+                  <label className="block font-bold text-zinc-700 uppercase mb-1">Length of Residency *</label>
+                  <select
+                    value={regData.residency_type}
+                    onChange={(e) => setRegData({ ...regData, residency_type: e.target.value })}
+                    className="w-full border border-zinc-300 p-2 rounded-xl bg-white"
+                  >
+                    <option value="since_birth">Since Birth</option>
+                    <option value="custom">Specify Years (Custom)</option>
+                  </select>
+                </div>
+                {regData.residency_type === 'custom' && (
+                  <div>
+                    <label className="block font-bold text-zinc-700 uppercase mb-1">Number of Years *</label>
+                    <input
+                      type="number"
+                      required
+                      min="1"
+                      max="100"
+                      value={regData.years_of_residency}
+                      onChange={(e) => setRegData({ ...regData, years_of_residency: e.target.value })}
+                      className="w-full border border-zinc-300 p-2 rounded-xl"
+                      placeholder="e.g. 5"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2">
+                <input type="checkbox" id="reg_head" checked={regData.is_head_of_household} onChange={(e) => setRegData({ ...regData, is_head_of_household: e.target.checked })} className="rounded text-amber-500 mr-2" />
+                <label htmlFor="reg_head" className="font-bold text-zinc-800">Register as Household Leader / Head</label>
+              </div>
+
+              {!regData.is_head_of_household && (
+                <div className="pt-2">
+                  <label className="block font-bold text-zinc-700 uppercase mb-1">Select Household Leader</label>
+                  <select value={regData.household_leader_id} onChange={(e) => setRegData({ ...regData, household_leader_id: e.target.value })} className="w-full border border-zinc-300 p-2 rounded-xl bg-white">
+                    <option value="">-- Select Registered Household Leader --</option>
+                    {householdLeaders.map(leader => (
+                      <option key={leader.id} value={leader.id}>
+                        {leader.first_name} {leader.last_name} (HH: {leader.household_number || 'N/A'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
             <button
