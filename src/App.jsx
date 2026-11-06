@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './lib/supabase';
+import { Menu, X } from 'lucide-react';
 
 // Auth Pages
 import LoginPage from './pages/auth/LoginPage';
@@ -26,6 +27,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState('landing');
   const [residentTab, setResidentTab] = useState('dashboard');
   const [adminTab, setAdminTab] = useState('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -74,7 +76,11 @@ export default function App() {
   };
 
   const fetchProjects = async () => {
-    const { data } = await supabase.from('barangay_projects').select('*').eq('is_public_disclosed', true);
+    let { data } = await supabase.from('barangay_projects').select('*');
+    if (!data || data.length === 0) {
+      const res = await supabase.from('projects').select('*');
+      data = res.data;
+    }
     if (data) setProjects(data);
   };
 
@@ -158,8 +164,6 @@ export default function App() {
       payload.paid_at = new Date().toISOString();
     }
 
-    console.log("Submitting update for ID:", reqId, "Payload:", payload);
-
     const { data, error } = await supabase
       .from('document_requests')
       .update(payload)
@@ -167,10 +171,8 @@ export default function App() {
       .select();
 
     if (error) {
-      console.error('Supabase Update Error Details:', error);
       alert(`Update failed: ${error.message}`);
     } else {
-      console.log('Successfully updated in Supabase:', data);
       fetchAdminRequests();
     }
   };
@@ -195,7 +197,7 @@ export default function App() {
     );
   }
 
-if (currentView === 'resident') {
+  if (currentView === 'resident') {
     return (
       <ResidentLayout 
         activeTab={residentTab} 
@@ -213,15 +215,83 @@ if (currentView === 'resident') {
 
   if (currentView === 'admin') {
     return (
-      <div className="min-h-screen bg-zinc-100 flex">
-        <AdminSidebar activeTab={adminTab} setActiveTab={setAdminTab} onLogout={handleLogout} userEmail={profile?.email || session?.user?.email} />
-        <main className="flex-grow p-8 overflow-y-auto max-w-7xl">
-          {adminTab === 'dashboard' && <AdminDashboard requests={adminRequests} residents={residentsList} projects={projects} />}
-          {adminTab === 'residents' && <ResidentRecords residents={residentsList} onRefresh={fetchResidents} />}
-          {adminTab === 'requests' && <ManageRequests requests={adminRequests} onUpdateStatus={handleUpdateStatus} />}
-          {adminTab === 'financials' && <ProjectsFinancials projects={projects} />}
-          {adminTab === 'notifications' && <Notifications />}
-          {adminTab === 'logs' && <ActivityLogs />}
+      <div className="min-h-screen bg-zinc-100 flex flex-col md:flex-row relative">
+        
+        {/* Mobile Header na may Hamburger Menu Button */}
+        <div className="md:hidden bg-black text-white p-4 flex justify-between items-center border-b border-amber-500 z-30 sticky top-0">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center text-black font-extrabold text-sm">
+              SA
+            </div>
+            <span className="font-bold text-sm tracking-wider">ADMIN PORTAL</span>
+          </div>
+          <button 
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-2 text-amber-400 hover:text-white focus:outline-none"
+          >
+            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
+
+        {/* Sidebar para sa Desktop at Mobile Drawer */}
+        <div className={`
+          fixed inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0
+          ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+        `}>
+          <AdminSidebar 
+            activeTab={adminTab} 
+            setActiveTab={(tab) => {
+              setAdminTab(tab);
+              setIsMobileMenuOpen(false); // Automatic na isasara ang menu kapag pinindot sa mobile
+            }} 
+            onLogout={handleLogout} 
+            userEmail={profile?.email || session?.user?.email} 
+          />
+        </div>
+
+        {/* Overlay para sa mobile kapag bukas ang menu */}
+        {isMobileMenuOpen && (
+          <div 
+            onClick={() => setIsMobileMenuOpen(false)}
+            className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          />
+        )}
+        
+        {/* Main Content Area na may Colored Watermark Logo sa Likod */}
+        <main className="flex-grow p-4 sm:p-6 md:p-8 overflow-y-auto max-w-full md:max-w-7xl relative">
+          
+          {/* Malaki at Colored Watermark Logo sa Likod */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden z-0">
+            <img 
+              src="/logo.jfif" 
+              alt="Watermark Logo" 
+              className="w-[350px] sm:w-[500px] md:w-[650px] h-[350px] sm:h-[500px] md:h-[650px] object-contain opacity-15"
+            />
+          </div>
+
+          {/* Lahat ng Active Components ay nakapatong sa ibabaw (z-10) */}
+          <div className="relative z-10 space-y-6">
+            {adminTab === 'dashboard' && (
+              <AdminDashboard 
+                requests={adminRequests} 
+                residents={residentsList} 
+                projects={projects} 
+                onNavigate={(route) => {
+                  if (route === 'managerequests') setAdminTab('requests');
+                  else if (route === 'projectfinancial') setAdminTab('financials');
+                  else if (route === 'notification') setAdminTab('notifications');
+                  else if (route === 'residentrecords') setAdminTab('residents');
+                  else setAdminTab(route);
+                }} 
+              />
+            )}
+            {adminTab === 'residents' && <ResidentRecords residents={residentsList} onRefresh={fetchResidents} />}
+            {adminTab === 'requests' && <ManageRequests requests={adminRequests} onUpdateStatus={handleUpdateStatus} />}
+            {adminTab === 'financials' && <ProjectsFinancials projects={projects} onRefresh={fetchProjects} />}
+            {adminTab === 'notifications' && <Notifications />}
+            {adminTab === 'logs' && <ActivityLogs />}
+          </div>
+
         </main>
       </div>
     );

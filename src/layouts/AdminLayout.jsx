@@ -5,7 +5,7 @@ export default function AdminLayout({ children, activeTab, setActiveTab, onLogou
   return (
     <div className="min-h-screen bg-gray-100 flex">
       {/* Sidebar */}
-      <aside className="w-64 bg-black text-white border-r-2 border-gold-500 flex flex-col">
+      <aside className="w-64 bg-black text-white border-r-2 border-gold-500 flex flex-col z-10">
         <div className="p-6 border-b border-gray-800 flex items-center space-x-3">
           <div className="w-10 h-10 rounded-full bg-gold-500 flex items-center justify-center text-black font-extrabold text-lg">
             SA
@@ -50,12 +50,27 @@ export default function AdminLayout({ children, activeTab, setActiveTab, onLogou
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-grow flex flex-col">
-        <header className="bg-white border-b border-gray-200 h-16 px-8 flex items-center justify-between shadow-sm">
+      <main className="flex-grow flex flex-col relative overflow-hidden">
+        
+        {/* =========================================
+            BARANGAY LOGO BACKGROUND WATERMARK
+           ========================================= */}
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+          <img 
+            src="logo.jfif" 
+            alt="Barangay San Agustin Watermark" 
+            className="w-[500px] h-[500px] object-contain opacity-5 filter grayscale contrast-125"
+          />
+        </div>
+
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200 h-16 px-8 flex items-center justify-between shadow-sm relative z-10">
           <h1 className="text-lg font-bold text-gray-900 uppercase tracking-tight">Barangay Hall Management Console</h1>
           <span className="text-xs bg-black text-gold-500 px-3 py-1 rounded-full font-bold border border-gold-500">Official Access</span>
         </header>
-        <div className="p-8 flex-grow overflow-y-auto">
+
+        {/* Page Contents */}
+        <div className="p-8 flex-grow overflow-y-auto relative z-10">
           {children}
         </div>
       </main>

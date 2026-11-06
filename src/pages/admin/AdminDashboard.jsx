@@ -1,113 +1,160 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FileText, 
   Users, 
-  CheckCircle2, 
-  Clock, 
+  Wallet, 
+  Bell, 
   ShieldCheck, 
-  TrendingUp,
-  Activity
+  Activity,
+  ArrowUpRight
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 
-export default function AdminDashboard({ requests = [], residents = [], projects = [] }) {
+export default function AdminDashboard({ requests = [], residents = [], projects: initialProjects = [], notifications = [], onNavigate }) {
+  const [projects, setProjects] = useState(initialProjects);
+
+  useEffect(() => {
+    if (initialProjects && initialProjects.length > 0) {
+      setProjects(initialProjects);
+    } else {
+      const fetchProjectsDirectly = async () => {
+        let { data } = await supabase.from('barangay_projects').select('*');
+        if (!data || data.length === 0) {
+          const res = await supabase.from('projects').select('*');
+          data = res.data;
+        }
+        if (data) setProjects(data);
+      };
+      fetchProjectsDirectly();
+    }
+  }, [initialProjects]);
+
   const totalRequests = requests.length;
-  const pendingRequests = requests.filter(r => r.status === 'pending' || r.status === 'under_review').length;
-  const readyRequests = requests.filter(r => r.status === 'ready_for_pickup').length;
   const totalResidents = residents.length;
-
+  
+  // Kinakalkula ang kabuuang alokasyon ng badyet mula sa database
+  const totalBudget = projects.reduce((acc, curr) => acc + Number(curr.allocated_budget || 0), 0);
+  
+  const totalNotifications = notifications.length;
   const recentRequests = requests.slice(0, 5);
 
+  const handleRoute = (target) => {
+    if (onNavigate) {
+      onNavigate(target);
+    }
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       
-      {/* 1. WELCOME BANNER */}
-      <div className="bg-gradient-to-r from-zinc-900 via-neutral-900 to-zinc-900 text-white p-6 sm:p-8 rounded-2xl border border-amber-500/40 shadow-lg relative overflow-hidden">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
+      {/* 1. DASHBOARD OVERVIEW BANNER */}
+      <div className="relative bg-zinc-900 border border-amber-500/30 rounded-2xl p-5 shadow-lg overflow-hidden flex flex-col justify-center">
+        
+        {/* Background Barangay Logo Watermark */}
+        <div className="absolute right-[-10px] top-1/2 -translate-y-1/2 opacity-15 pointer-events-none w-40 h-40 rounded-full overflow-hidden flex items-center justify-center">
+          <img 
+            src="logo.jfif" 
+            alt="Barangay San Agustin Logo" 
+            className="w-full h-full object-cover filter brightness-125"
+          />
+        </div>
+
+        <div className="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
-            <div className="inline-flex items-center space-x-2 bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3 py-1 rounded-full text-xs font-semibold tracking-wide uppercase mb-2">
-              <ShieldCheck size={14} />
+            <div className="inline-flex items-center space-x-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/30 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold tracking-wide uppercase mb-1">
+              <ShieldCheck size={13} />
               <span>Admin Portal • Barangay San Agustin</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-white">
+            <h1 className="text-xl sm:text-2xl font-black text-white">
               Dashboard Overview
             </h1>
-            <p className="text-xs sm:text-sm text-zinc-400 mt-1">
+            <p className="text-xs text-zinc-400 mt-0.5">
               Castillejos, Zambales • Monitoring resident database and document application requests in real time.
             </p>
-          </div>
-
-          <div className="bg-zinc-800/60 border border-zinc-700 px-4 py-2.5 rounded-xl text-right">
-            <p className="text-[10px] text-zinc-400 uppercase tracking-wider font-bold">System Status</p>
-            <div className="flex items-center space-x-2 mt-0.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span className="text-xs font-bold text-zinc-200">Online</span>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* 2. STATS METRICS CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      {/* 2. CLICKABLE STATS METRICS CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* Total Requests */}
-        <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm">
+        {/* Document Requests -> managerequests */}
+        <div 
+          onClick={() => handleRoute('managerequests')}
+          className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm hover:shadow-md hover:border-amber-400 transition-all cursor-pointer group"
+        >
           <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold border border-amber-100">
+            <div className="w-10 h-10 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center font-bold border border-amber-100 group-hover:scale-105 transition">
               <FileText size={20} />
             </div>
             <span className="text-[10px] font-bold px-2 py-0.5 bg-zinc-100 text-zinc-600 rounded-md">Total</span>
           </div>
           <p className="text-xs font-semibold text-zinc-500 uppercase">Document Requests</p>
-          <div className="flex items-baseline space-x-2 mt-1">
+          <div className="flex items-baseline justify-between mt-1">
             <p className="text-2xl font-black text-zinc-900">{totalRequests}</p>
-            <span className="text-xs font-medium text-amber-600 flex items-center">
-              <TrendingUp size={12} className="mr-0.5" /> All records
+            <span className="text-xs font-bold text-amber-600 flex items-center gap-0.5 group-hover:underline">
+              Manage requests <ArrowUpRight size={14} />
             </span>
           </div>
         </div>
 
-        {/* Pending Approvals */}
-        <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm">
+        {/* Financial Monitoring -> projectfinancial (Nakatutok na sa Total Budget) */}
+        <div 
+          onClick={() => handleRoute('projectfinancial')}
+          className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm hover:shadow-md hover:border-emerald-400 transition-all cursor-pointer group"
+        >
           <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 bg-sky-50 text-sky-600 rounded-xl flex items-center justify-center font-bold border border-sky-100">
-              <Clock size={20} />
+            <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold border border-emerald-100 group-hover:scale-105 transition">
+              <Wallet size={20} />
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 bg-sky-50 text-sky-700 rounded-md">Action</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md">Budget</span>
           </div>
-          <p className="text-xs font-semibold text-zinc-500 uppercase">Pending Review</p>
-          <div className="flex items-baseline space-x-2 mt-1">
-            <p className="text-2xl font-black text-zinc-900">{pendingRequests}</p>
-            <span className="text-xs font-medium text-sky-600">For evaluation</span>
+          <p className="text-xs font-semibold text-zinc-500 uppercase">Financial Monitoring</p>
+          <div className="flex items-baseline justify-between mt-1">
+            <p className="text-xl font-black text-emerald-800">₱{totalBudget.toLocaleString()}</p>
+            <span className="text-xs font-bold text-emerald-600 flex items-center gap-0.5 group-hover:underline">
+              View budget <ArrowUpRight size={14} />
+            </span>
           </div>
         </div>
 
-        {/* Ready for Pickup */}
-        <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm">
+        {/* Notification -> notification */}
+        <div 
+          onClick={() => handleRoute('notification')}
+          className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm hover:shadow-md hover:border-sky-400 transition-all cursor-pointer group"
+        >
           <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center font-bold border border-emerald-100">
-              <CheckCircle2 size={20} />
+            <div className="w-10 h-10 bg-sky-50 text-sky-600 rounded-xl flex items-center justify-center font-bold border border-sky-100 group-hover:scale-105 transition">
+              <Bell size={20} />
             </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-md">Claimable</span>
+            <span className="text-[10px] font-bold px-2 py-0.5 bg-sky-50 text-sky-700 rounded-md">Alerts</span>
           </div>
-          <p className="text-xs font-semibold text-zinc-500 uppercase">Ready for Pickup</p>
-          <div className="flex items-baseline space-x-2 mt-1">
-            <p className="text-2xl font-black text-zinc-900">{readyRequests}</p>
-            <span className="text-xs font-medium text-emerald-600">For releasing</span>
+          <p className="text-xs font-semibold text-zinc-500 uppercase">Notification</p>
+          <div className="flex items-baseline justify-between mt-1">
+            <p className="text-2xl font-black text-zinc-900">{totalNotifications}</p>
+            <span className="text-xs font-bold text-sky-600 flex items-center gap-0.5 group-hover:underline">
+              Check alerts <ArrowUpRight size={14} />
+            </span>
           </div>
         </div>
 
-        {/* Registered Residents */}
-        <div className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm">
+        {/* Registered Residents -> residentrecords */}
+        <div 
+          onClick={() => handleRoute('residentrecords')}
+          className="bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm hover:shadow-md hover:border-purple-400 transition-all cursor-pointer group"
+        >
           <div className="flex justify-between items-start mb-3">
-            <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center font-bold border border-purple-100">
+            <div className="w-10 h-10 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center font-bold border border-purple-100 group-hover:scale-105 transition">
               <Users size={20} />
             </div>
             <span className="text-[10px] font-bold px-2 py-0.5 bg-purple-50 text-purple-700 rounded-md">Database</span>
           </div>
           <p className="text-xs font-semibold text-zinc-500 uppercase">Registered Residents</p>
-          <div className="flex items-baseline space-x-2 mt-1">
+          <div className="flex items-baseline justify-between mt-1">
             <p className="text-2xl font-black text-zinc-900">{totalResidents}</p>
-            <span className="text-xs font-medium text-purple-600">Total profiles</span>
+            <span className="text-xs font-bold text-purple-600 flex items-center gap-0.5 group-hover:underline">
+              Total profiles <ArrowUpRight size={14} />
+            </span>
           </div>
         </div>
 
@@ -123,9 +170,12 @@ export default function AdminDashboard({ requests = [], residents = [], projects
             </h3>
             <p className="text-xs text-zinc-500 mt-0.5">Latest document requests submitted by residents.</p>
           </div>
-          <span className="text-xs font-semibold text-zinc-600 bg-zinc-100 px-3 py-1 rounded-lg">
-            Live Feed
-          </span>
+          <button 
+            onClick={() => handleRoute('managerequests')}
+            className="text-xs font-bold text-amber-600 hover:underline bg-amber-50 px-3 py-1 rounded-lg border border-amber-200 cursor-pointer"
+          >
+            View All
+          </button>
         </div>
 
         <div className="overflow-x-auto rounded-xl border border-zinc-100">
