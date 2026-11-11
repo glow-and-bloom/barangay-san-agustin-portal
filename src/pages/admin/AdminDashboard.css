@@ -1,0 +1,168 @@
+/* Custom CSS styling para sa Admin Dashboard */
+
+.dashboard-container {
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  padding-bottom: 2rem;
+}
+
+/* Banner Styling */
+.banner-container {
+  position: relative;
+  background-color: #18181b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.banner-watermark {
+  position: absolute;
+  inset: 0;
+  opacity: 0.15;
+  pointer-events: none;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.banner-watermark img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(1.25);
+}
+
+/* Financial Donut Chart SVG Styling */
+.donut-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.donut-bg {
+  color: #f4f4f5;
+}
+
+.donut-segment {
+  transition: all 0.5s ease;
+}
+
+/* Card Hover Animations */
+.dashboard-card {
+  transition: all 0.2s ease-in-out;
+}
+
+.dashboard-card:hover {
+  transform: translateY(-2px);
+}
+
+/* ==========================================
+   VOTERS LIST MODAL & TABLE STYLES
+   ========================================== */
+
+.voters-modal-content {
+  border: 1px solid #facc15 !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+.voters-table-header {
+  background-color: #facc15 !important;
+  color: #1f1e1e !important;
+  text-transform: uppercase;
+  font-weight: 900;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+}
+
+.voters-table-header th {
+  padding: 12px 14px;
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.voters-table-header th:last-child {
+  border-right: none;
+}
+
+.voters-btn-print {
+  background: linear-gradient(to right, #fef08a, #fde047, #facc15);
+  color: #262626;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.voters-btn-print:hover {
+  background: #f59e0b;
+}
+
+.voters-btn-close {
+  background: linear-gradient(to right, #fef08a, #fde047, #facc15);
+  color: #232323;
+  font-weight: 700;
+  padding: 6px 14px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.voters-btn-close:hover {
+  background: #f59e0b;
+}
+
+.voters-action-view {
+  background-color: #facc15 !important;
+  color: #222121 !important;
+  font-weight: 800 !important;
+  font-size: 11px !important;
+  padding: 4px 16px !important;
+  border-radius: 9999px !important;
+  border: none !important;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.2s ease;
+}
+
+.voters-action-view:hover {
+  background-color: #f59e0b !important;
+  transform: scale(1.05);
+}
+
+.voters-table-row:hover {
+  background-color: #fbf8e0 !important;
+}
+
+/* TAMA NA ANG PRINT: Naayos ang pagpapakita ng laman sa printer preview */
+@media print {
+  body {
+    background: white !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  .printable-voters-area, .printable-voters-area * {
+    visibility: visible;
+  }
+
+  .printable-voters-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 100% !important;
+    background: white !important;
+    padding: 20px !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}

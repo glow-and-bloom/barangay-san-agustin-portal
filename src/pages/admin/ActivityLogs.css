@@ -1,0 +1,22 @@
+/* Official Pill-Shaped Action Button Style (Yellow-Gold Gradient) */
+.walkin-trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: linear-gradient(to right, #fde047, #facc15, #eab308);
+  color: #022c22;
+  font-weight: 900;
+  font-size: 0.75rem;
+  padding: 0.625rem 1.25rem;
+  border-radius: 9999px;
+  border: 1px solid #fde047;
+  box-shadow: 0 4px 12px rgba(250, 204, 21, 0.25);
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.walkin-trigger-btn:hover {
+  background: linear-gradient(to right, #facc15, #eab308, #ca8a04);
+  box-shadow: 0 6px 16px rgba(250, 204, 21, 0.4);
+}

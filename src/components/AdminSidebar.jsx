@@ -4,96 +4,96 @@ import {
   Users, 
   FileText, 
   BarChart3, 
-  Bell, 
-  Activity, 
-  LogOut, 
-  Building2,
-  CloudSun
+  FileBarChart, 
+  Settings, 
+  History, 
+  LogOut,
+  Bell,
+  Award,
+  MessageSquare,
+  Wrench,
+  Inbox
 } from 'lucide-react';
 
 export default function AdminSidebar({ activeTab, setActiveTab, onLogout, userEmail }) {
   const menuItems = [
-    { id: 'dashboard', label: 'Admin Dashboard', icon: LayoutDashboard },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'requested-documents', label: 'Requested Documents', icon: Inbox }, // Dito muna papasok ang mga bagong request mula sa public landing page
+    { id: 'requests', label: 'Manage Requests', icon: FileText },             // Pagkatapos ma-approve, dito na mapupunta
     { id: 'residents', label: 'Resident Records', icon: Users },
-    { id: 'requests', label: 'Document Requests', icon: FileText },
-    { id: 'financials', label: 'Financial Monitoring', icon: BarChart3 },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'logs', label: 'Activity Logs', icon: Activity },
+    { id: 'financials', label: 'Projects & Financials', icon: BarChart3 },
+    { id: 'announcements', label: 'Announcements & MV', icon: Bell },
+    { id: 'officials', label: 'Barangay Officials', icon: Award },
+    { id: 'services', label: 'Services', icon: Wrench },
+    { id: 'feedback', label: 'Feedback', icon: MessageSquare },
+    { id: 'reports', label: 'Reports', icon: FileBarChart },
+    { id: 'logs', label: 'Activity Logs', icon: History },
+    { id: 'settings', label: 'Settings', icon: Settings },
   ];
 
   return (
-    <aside className="w-72 bg-gray-50 border-r border-gray-200 flex flex-col shrink-0 min-h-screen text-gray-700 font-sans select-none">
+    <div className="h-full flex flex-col bg-gradient-to-b from-amber-50 via-white to-amber-100/60 backdrop-blur-xl text-zinc-800 border-r border-amber-200 select-none font-sans shadow-2xl">
       
-      {/* Brand Header */}
-      <div className="p-6 border-b border-gray-200 flex items-center space-x-3 bg-white">
-        <div className="w-10 h-10 rounded-xl bg-black text-gold-500 flex items-center justify-center font-black shadow-md border border-gold-500/30">
-          <Building2 size={20} />
+      {/* LOGO & HEADER */}
+      <div className="p-6 border-b border-amber-200/60 flex flex-col items-center text-center bg-amber-100/30">
+        <div className="w-16 h-16 rounded-full bg-white backdrop-blur-md p-1 mb-3 shadow-lg flex items-center justify-center border-2 border-amber-400 overflow-hidden shadow-amber-300/20">
+          <img 
+            src="logo.jfif" 
+            alt="Barangay Logo" 
+            className="w-full h-full object-contain rounded-full"
+          />
         </div>
-        <div>
-          <h1 className="font-extrabold text-sm text-gray-900 tracking-tight leading-none">San Agustin</h1>
-          <p className="text-[11px] text-gray-500 mt-0.5">E-Governance Portal</p>
-        </div>
+        
+        <h2 className="font-black text-xs text-zinc-900 tracking-wider uppercase">
+          BRGY. SAN AGUSTIN PORTAL
+        </h2>
+        <p className="text-[11px] text-amber-700 mt-0.5 font-extrabold">
+          Administrator
+        </p>
       </div>
 
-      {/* Navigation Group Title */}
-      <div className="px-6 pt-6 pb-2">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
-          Administration
-        </span>
-      </div>
-
-      {/* Menu Links */}
-      <nav className="flex-grow px-4 space-y-1">
+      {/* Navigation Links */}
+      <div className="px-3 py-3 flex-1 space-y-1 overflow-y-auto">
+        <p className="px-3 text-[10px] font-black uppercase tracking-wider text-amber-800/70 mb-2">
+          Management Modules
+        </p>
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
+
           return (
             <button
               key={item.id}
+              type="button"
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-bold transition-all ${
-                isActive 
-                  ? 'bg-amber-100/70 text-amber-900 shadow-sm border border-amber-200/60' 
-                  : 'text-gray-600 hover:bg-gray-200/50 hover:text-gray-900'
+              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                isActive
+                  ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-zinc-950 shadow-md shadow-amber-400/30 font-black border border-amber-300'
+                  : 'text-zinc-700 hover:bg-amber-100/50 hover:text-zinc-950'
               }`}
             >
-              <Icon size={18} className={isActive ? 'text-amber-800' : 'text-gray-500'} />
+              <Icon size={16} className={isActive ? 'text-zinc-950' : 'text-amber-600'} />
               <span>{item.label}</span>
             </button>
           );
         })}
-      </nav>
-
-      {/* Footer / User Session Card */}
-      <div className="p-4 m-4 bg-white rounded-2xl border border-gray-200 shadow-sm space-y-3">
-        <div>
-          <p className="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Signed in as</p>
-          <p className="text-xs font-semibold text-gray-900 truncate mt-0.5">
-            {userEmail || 'admin.sanagustin@gmail.com'}
-          </p>
-          <span className="inline-block mt-1 px-2 py-0.5 bg-black text-gold-500 text-[10px] font-extrabold rounded tracking-wider uppercase">
-            Admin
-          </span>
-        </div>
-
-        <button
-          onClick={onLogout}
-          className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 transition border border-red-100"
-        >
-          <LogOut size={14} />
-          <span>Sign Out</span>
-        </button>
-
-        {/* Weather / Subic Widget */}
-        <div className="pt-2 border-t border-gray-100 flex items-center justify-between text-gray-500 text-[11px]">
-          <div className="flex items-center space-x-1.5">
-            <CloudSun size={14} className="text-amber-500" />
-            <span>32°C</span>
-          </div>
-          <span className="text-gray-400">Partly sunny</span>
-        </div>
       </div>
 
-    </aside>
+      {/* Footer / Logout */}
+      <div className="p-4 border-t border-amber-200/60 bg-amber-50/50 backdrop-blur-md">
+        <div className="mb-2 px-1">
+          <p className="text-[10px] font-black text-amber-800/70 uppercase">Signed in as</p>
+          <p className="text-xs font-bold text-zinc-900 truncate mt-0.5">{userEmail || 'admin.sanagustin@gmail.com'}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onLogout}
+          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 transition cursor-pointer border border-red-200"
+        >
+          <LogOut size={15} />
+          <span>Sign Out</span>
+        </button>
+      </div>
+    </div>
   );
 }

@@ -1,16 +1,127 @@
-import React, { useState, useEffect } from 'react';
-import { Search, CheckCircle2, Eye, FileText, X, Printer, Edit3, Building2 } from 'lucide-react';
 
-export default function ManageRequests({ requests = [], onUpdateStatus }) {
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Search, CheckCircle2, Check, Eye, X, Printer, Edit3,
+  Building2, Trash2, UserPlus, FileText, RefreshCw
+} from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import emailjs from '@emailjs/browser';
+import './ManageRequests.css';
+
+const EMAILJS_SERVICE_ID = 'service_7p37ngs';
+const EMAILJS_TEMPLATE_ID_RESIDENT = 'template_30v2pth';
+const EMAILJS_PUBLIC_KEY = 'l7wGC4bm9gnhdlvcb';
+const ADMIN_EMAIL = 'brgy.sanagustin301@gmail.com';
+
+let approvedRequestsCache = null;
+
+const formatDate = date => date
+  ? new Date(date).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  : 'N/A';
+
+const localDateTime = date => {
+  if (!date) return { date: '', time: '10:00' };
+
+  const d = new Date(date);
+  const pad = n => String(n).padStart(2, '0');
+
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`
+  };
+};
+
+const getResidentName = (req, residents = []) => {
+  const resident = Array.isArray(req?.residents)
+    ? req.residents[0]
+    : req?.residents;
+
+  const matchedResident = residents.find(
+    item => item.id === req?.resident_id
+  );
+
+  return req?.full_name ||
+    [resident?.first_name, resident?.last_name].filter(Boolean).join(' ') ||
+    [
+      matchedResident?.first_name,
+      matchedResident?.middle_name,
+      matchedResident?.last_name
+    ].filter(Boolean).join(' ') ||
+    'Resident';
+};
+
+const Field = ({
+  label,
+  value,
+  onChange,
+  multiline = false,
+  disabled = false,
+  children
+}) => {
+  const Tag = multiline ? 'textarea' : 'input';
+
+  return (
+    <div className="edit-field relative">
+      <label>{label}</label>
+      <Tag
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        rows={multiline ? 3 : undefined}
+        disabled={disabled}
+        className="edit-input"
+      />
+      {children}
+    </div>
+  );
+};
+
+const RequestSkeleton = () => (
+  <>
+    {Array.from({ length: 6 }).map((_, index) => (
+      <tr key={index} className="request-skeleton-row">
+        <td className="p-3">
+          <div className="skeleton skeleton-checkbox" />
+        </td>
+        {[110, 125, 115, 100, 120, 90, 100, 45, 75].map((width, i) => (
+          <td key={i} className="p-3">
+            <div
+              className="skeleton skeleton-line"
+              style={{ width }}
+            />
+          </td>
+        ))}
+      </tr>
+    ))}
+  </>
+);
+
+export default function ManageRequests({ residents = [] }) {
+  const [approvedRequests, setApprovedRequests] = useState(
+    () => approvedRequestsCache || []
+  );
   const [search, setSearch] = useState('');
   const [selectedPayReq, setSelectedPayReq] = useState(null);
   const [viewCertReq, setViewCertReq] = useState(null);
-  
   const [pickupDate, setPickupDate] = useState('');
   const [pickupTime, setPickupTime] = useState('10:00');
   const [orNo, setOrNo] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [loading, setLoading] = useState(
+    () => approvedRequestsCache === null
+  );
+  const [selectedIds, setSelectedIds] = useState([]);
 
-  // Editable Certificate Details State
+  const [isWalkinSelectorOpen, setIsWalkinSelectorOpen] = useState(false);
+  const [isResidentDropdownOpen, setIsResidentDropdownOpen] = useState(false);
+
+  const mountedRef = useRef(false);
+
   const [certDetails, setCertDetails] = useState({
     residentName: '',
     purok: '',
@@ -22,242 +133,771 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
     businessAddress: ''
   });
 
-  // Otomatikong i-populate ang Certificate Details pati Business info kapag binuksan ang modal
-  useEffect(() => {
-    if (viewCertReq) {
-      const fullName = viewCertReq.residents 
-        ? `${viewCertReq.residents.first_name} ${viewCertReq.residents.last_name}` 
-        : 'Resident';
-      
-      setCertDetails({
-        residentName: fullName,
-        purok: viewCertReq.residents?.purok || '---',
-        purpose: viewCertReq.purpose || 'Business Permit Application',
-        issueDate: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
-        captainName: 'HON. BARANGAY CAPTAIN',
-        businessName: viewCertReq.business_name || 'N/A',
-        businessType: viewCertReq.business_type || 'N/A',
-        businessAddress: viewCertReq.business_address || `Purok ${viewCertReq.residents?.purok || ''}, Barangay San Agustin`
-      });
-    }
-  }, [viewCertReq]);
+  const updateApprovedRequests = updater => {
+    setApprovedRequests(prev => {
+      const updated = typeof updater === 'function'
+        ? updater(prev)
+        : updater;
 
-  const filtered = requests.filter(r => 
-    r.tracking_number?.toLowerCase().includes(search.toLowerCase()) ||
-    r.document_type?.toLowerCase().includes(search.toLowerCase()) ||
-    r.business_name?.toLowerCase().includes(search.toLowerCase())
+      approvedRequestsCache = updated;
+      return updated;
+    });
+  };
+
+  const updateCert = (field, value) => {
+    setCertDetails(prev => ({ ...prev, [field]: value }));
+  };
+
+  const isBusinessPermit = /business|permit/i.test(
+    viewCertReq?.document_type || ''
   );
 
-  const isPaidDocument = (docType) => {
-    if (!docType) return false;
-    const type = docType.toLowerCase();
-    return type.includes('business') || type.includes('permit');
+  const isPaidDocument = type => /business|permit/i.test(type || '');
+
+  const isPaid = req =>
+    req?.payment_status === 'paid' ||
+    req?.is_paid === true ||
+    ['released', 'completed'].includes(
+      (req?.status || '').toLowerCase()
+    );
+
+  const getOR = req => req?.payment_reciept_no || '';
+
+  const isCompleted = req => {
+    const current = req?.id
+      ? approvedRequests.find(item => item.id === req.id) || req
+      : req;
+
+    const status = (current?.status || '').toLowerCase();
+
+    return Boolean(
+      current &&
+      (
+        status === 'released' ||
+        status === 'completed' ||
+        (isPaidDocument(current.document_type) && isPaid(current))
+      )
+    );
   };
 
-  const handlePrintAndReady = () => {
-    if (!pickupDate || !pickupTime) {
-      return alert('Please select both Pickup Date and Time before printing.');
+  const completed = isCompleted(viewCertReq);
+
+  const fetchAllApproved = async ({ showLoading = false } = {}) => {
+    if (showLoading && mountedRef.current) {
+      setLoading(true);
     }
 
-    const combinedDateTime = new Date(`${pickupDate}T${pickupTime}`).toISOString();
+    try {
+      const { data, error } = await supabase
+        .from('document_requests')
+        .select(`
+          id,
+          resident_id,
+          tracking_number,
+          full_name,
+          email,
+          address,
+          document_type,
+          purpose,
+          business_name,
+          business_type,
+          business_address,
+          status,
+          payment_status,
+          is_paid,
+          fee,
+          fee_amount,
+          payment_reciept_no,
+          pickup_date,
+          created_at
+        `)
+        .in('status', [
+          'approved',
+          'ready_for_pickup',
+          'released',
+          'completed'
+        ])
+        .order('created_at', { ascending: false })
+        .limit(100);
 
-    onUpdateStatus(viewCertReq.id, 'ready_for_pickup', { 
-      pickup_date: combinedDateTime 
+      if (error) throw error;
+
+      const updatedRequests = data || [];
+
+      approvedRequestsCache = updatedRequests;
+
+      if (mountedRef.current) {
+        setApprovedRequests(updatedRequests);
+        setSelectedIds([]);
+      }
+    } catch (error) {
+      console.error('Unable to load approved requests:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      });
+
+      if (showLoading && mountedRef.current) {
+        alert(error.message || 'Unable to load approved requests.');
+      }
+    } finally {
+      if (showLoading && mountedRef.current) {
+        setLoading(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    fetchAllApproved({
+      showLoading: approvedRequestsCache === null
     });
 
-    window.print();
-    setViewCertReq(null);
-    setPickupDate('');
-    setPickupTime('10:00');
+    const channel = supabase
+      .channel('manage-approved-document-requests')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'document_requests'
+        },
+        () => {
+          fetchAllApproved();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      mountedRef.current = false;
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!viewCertReq) return;
+
+    const schedule = viewCertReq.pickup_date
+      ? localDateTime(viewCertReq.pickup_date)
+      : null;
+
+    const resident = viewCertReq.isWalkin
+      ? viewCertReq.residentName || ''
+      : getResidentName(viewCertReq, residents);
+
+    setCertDetails({
+      residentName: resident,
+      purok: viewCertReq.address ||
+        viewCertReq.purok ||
+        viewCertReq.residents?.purok ||
+        'Purok 1',
+      purpose: viewCertReq.purpose ||
+        (/business/i.test(viewCertReq.document_type || '')
+          ? 'Business Registration / Permit'
+          : 'General Purpose'),
+      issueDate: new Date().toLocaleDateString('en-US', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric'
+      }),
+      captainName: 'HON. BARANGAY CAPTAIN',
+      businessName: viewCertReq.business_name || 'N/A',
+      businessType: viewCertReq.business_type || 'N/A',
+      businessAddress: viewCertReq.business_address ||
+        viewCertReq.address ||
+        'Barangay San Agustin'
+    });
+
+    setPickupDate(schedule?.date || '');
+    setPickupTime(schedule?.time || '10:00');
+  }, [viewCertReq, residents]);
+
+  const filtered = approvedRequests.filter(req => {
+    const name = getResidentName(req, residents);
+    const keyword = search.toLowerCase();
+
+    return [
+      req.tracking_number,
+      req.document_type,
+      req.business_name,
+      name
+    ].some(value =>
+      String(value || '').toLowerCase().includes(keyword)
+    );
+  });
+
+  const sendEmailAlertToResident = async (
+    recipientEmail,
+    residentName,
+    trackingNo,
+    docType,
+    status,
+    scheduleText = '',
+    customMsg = ''
+  ) => {
+    const residentEmail = recipientEmail?.trim();
+
+    if (!residentEmail) {
+      console.warn('Resident email is missing. No notification was sent.');
+      return false;
+    }
+
+    try {
+      const response = await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        EMAILJS_TEMPLATE_ID_RESIDENT,
+        {
+          to_email: residentEmail,
+          to_name: residentName,
+          from_name: 'Barangay San Agustin Office',
+          reply_to: ADMIN_EMAIL,
+          resident_name: residentName,
+          resident_email: residentEmail,
+          tracking_number: trackingNo,
+          document_type: docType?.replace(/_/g, ' ').toUpperCase(),
+          status,
+          pickup_schedule: scheduleText || 'Not scheduled',
+          message: customMsg
+        },
+        EMAILJS_PUBLIC_KEY
+      );
+
+      console.log('Resident email notification sent:', response.status);
+      return true;
+    } catch (error) {
+      console.error('Resident email notification failed:', error?.text || error);
+      return false;
+    }
   };
 
-  const handleReleasePayment = () => {
-    if (!orNo) return alert('Please enter Official Receipt (OR) Number.');
-    onUpdateStatus(selectedPayReq.id, 'completed', { orNo });
-    setSelectedPayReq(null);
-    setOrNo('');
+  const handleSelectAll = e => {
+    if (e.target.checked) {
+      setSelectedIds(filtered.map(req => req.id));
+    } else {
+      setSelectedIds([]);
+    }
   };
 
-  const handleDirectRelease = (reqId) => {
-    onUpdateStatus(reqId, 'completed', {});
+  const handleSelectOne = id => {
+    setSelectedIds(prev =>
+      prev.includes(id)
+        ? prev.filter(item => item !== id)
+        : [...prev, id]
+    );
   };
 
-  const isBusinessPermit = viewCertReq?.document_type === 'business_permit_clearance';
+  const handleDeleteSingle = async (id, trackingNo) => {
+    if (!window.confirm(
+      `Are you sure you want to delete request ${trackingNo || id}?`
+    )) return;
+
+    try {
+      setProcessing(true);
+
+      const { error } = await supabase
+        .from('document_requests')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
+      updateApprovedRequests(prev =>
+        prev.filter(req => req.id !== id)
+      );
+
+      setSelectedIds(prev =>
+        prev.filter(item => item !== id)
+      );
+    } catch (error) {
+      alert(error.message || 'Failed to delete request.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (!selectedIds.length) return;
+
+    if (!window.confirm(
+      `Are you sure you want to delete ${selectedIds.length} selected request(s)?`
+    )) return;
+
+    try {
+      setProcessing(true);
+
+      const { error } = await supabase
+        .from('document_requests')
+        .delete()
+        .in('id', selectedIds);
+
+      if (error) throw error;
+
+      updateApprovedRequests(prev =>
+        prev.filter(req => !selectedIds.includes(req.id))
+      );
+
+      setSelectedIds([]);
+    } catch (error) {
+      alert(error.message || 'Failed to delete selected requests.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handlePrintAndReady = async () => {
+    if (!viewCertReq || processing) return;
+
+    if (viewCertReq.isWalkin) {
+      window.print();
+      return;
+    }
+
+    if (isCompleted(viewCertReq)) {
+      alert('This document request is already completed.');
+      return;
+    }
+
+    if (!pickupDate || !pickupTime) {
+      alert('Please select both Pickup Date and Time.');
+      return;
+    }
+
+    try {
+      setProcessing(true);
+
+      const formattedPickup = new Date(
+        `${pickupDate}T${pickupTime}:00`
+      ).toISOString();
+
+      const humanSchedule = `${pickupDate} at ${pickupTime}`;
+
+      const { error } = await supabase
+        .from('document_requests')
+        .update({
+          status: 'ready_for_pickup',
+          pickup_date: formattedPickup
+        })
+        .eq('id', viewCertReq.id);
+
+      if (error) throw error;
+
+      updateApprovedRequests(prev =>
+        prev.map(req =>
+          req.id === viewCertReq.id
+            ? {
+                ...req,
+                status: 'ready_for_pickup',
+                pickup_date: formattedPickup
+              }
+            : req
+        )
+      );
+
+      setViewCertReq(prev => ({
+        ...prev,
+        status: 'ready_for_pickup',
+        pickup_date: formattedPickup
+      }));
+
+      const emailSent = await sendEmailAlertToResident(
+        viewCertReq.email,
+        certDetails.residentName,
+        viewCertReq.tracking_number,
+        viewCertReq.document_type,
+        'READY FOR PICKUP',
+        humanSchedule,
+        `Your ${viewCertReq.document_type?.replace(/_/g, ' ')} is ready for pickup on ${humanSchedule} at the Barangay San Agustin Hall. Please bring your tracking number when claiming your document.`
+      );
+
+      if (!emailSent) {
+        alert('The request was updated, but the resident email notification could not be sent. Please check the resident email and EmailJS settings.');
+      }
+
+      window.print();
+    } catch (error) {
+      alert(error.message || 'Unable to update document request.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleReleasePayment = async () => {
+    if (!orNo.trim()) {
+      alert('Please enter the Official Receipt (OR) Number.');
+      return;
+    }
+
+    if (!selectedPayReq || processing) return;
+
+    try {
+      setProcessing(true);
+
+      const receiptNumber = orNo.trim();
+
+      const { error } = await supabase
+        .from('document_requests')
+        .update({
+          status: 'released',
+          is_paid: true,
+          payment_reciept_no: receiptNumber
+        })
+        .eq('id', selectedPayReq.id);
+
+      if (error) throw error;
+
+      updateApprovedRequests(prev =>
+        prev.map(req =>
+          req.id === selectedPayReq.id
+            ? {
+                ...req,
+                status: 'released',
+                is_paid: true,
+                payment_reciept_no: receiptNumber
+              }
+            : req
+        )
+      );
+
+      const emailSent = await sendEmailAlertToResident(
+        selectedPayReq.email,
+        getResidentName(selectedPayReq, residents),
+        selectedPayReq.tracking_number,
+        selectedPayReq.document_type,
+        'RELEASED',
+        'Collected',
+        `Your document has been successfully collected and paid. OR No: ${receiptNumber}. Thank you!`
+      );
+
+      if (!emailSent) {
+        alert('Payment was recorded, but the resident email notification could not be sent.');
+      }
+
+      setSelectedPayReq(null);
+      setOrNo('');
+    } catch (error) {
+      alert(error.message || 'Unable to record payment.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleDirectRelease = async req => {
+    if (processing || !window.confirm('Mark this document as collected?')) {
+      return;
+    }
+
+    try {
+      setProcessing(true);
+
+      const { error } = await supabase
+        .from('document_requests')
+        .update({
+          status: 'released',
+          is_paid: true
+        })
+        .eq('id', req.id);
+
+      if (error) throw error;
+
+      updateApprovedRequests(prev =>
+        prev.map(item =>
+          item.id === req.id
+            ? { ...item, status: 'released', is_paid: true }
+            : item
+        )
+      );
+
+      const emailSent = await sendEmailAlertToResident(
+        req.email,
+        getResidentName(req, residents),
+        req.tracking_number,
+        req.document_type,
+        'RELEASED',
+        'Collected',
+        'Your document has been marked as collected/released. Thank you!'
+      );
+
+      if (!emailSent) {
+        alert('The document was released, but the resident email notification could not be sent.');
+      }
+    } catch (error) {
+      alert(error.message || 'Unable to release document.');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleSelectWalkinDoc = docType => {
+    const newWalkinObj = {
+      id: `walkin_${Date.now()}`,
+      tracking_number: `REQ-${new Date().getFullYear()}-${Math.floor(100000 + Math.random() * 900000)}`,
+      document_type: docType,
+      purpose: docType.includes('business')
+        ? 'Business Registration / Permit'
+        : 'General Purpose',
+      business_name: 'N/A',
+      business_type: 'N/A',
+      created_at: new Date().toISOString(),
+      status: 'completed',
+      isWalkin: true,
+      residentName: '',
+      purok: 'Purok 2'
+    };
+
+    setIsWalkinSelectorOpen(false);
+    setViewCertReq(newWalkinObj);
+  };
+
+  const filteredResidentsList = residents.filter(res => {
+    const fullName = `${res.first_name || ''} ${res.last_name || ''}`.toLowerCase();
+
+    return fullName.includes(
+      (certDetails.residentName || '').toLowerCase()
+    );
+  });
 
   return (
     <div className="space-y-6 font-sans">
-      {/* PRINT STYLING */}
-      <style>{`
-        @page {
-          size: portrait;
-          margin: 5mm;
-        }
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          #printable-certificate, #printable-certificate * {
-            visibility: visible !important;
-          }
-          #printable-certificate {
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            height: 100% !important;
-            margin: 0 !important;
-            padding: 12mm !important;
-            background: white !important;
-            box-shadow: none !important;
-            border: none !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-        }
-      `}</style>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-zinc-900 tracking-tight">
+            MANAGE APPROVED REQUESTS
+          </h1>
+        </div>
 
-      <div className="no-print">
-        <h1 className="text-2xl font-black text-gray-900 tracking-tight">Document Requests</h1>
-        <p className="text-xs text-gray-500 mt-1">Review, process, and monitor resident document requests.</p>
+<div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fetchAllApproved({ showLoading: true })}
+            title="Refresh List"
+            aria-label="Refresh List"
+            disabled={loading}
+            className="p-2.5 rounded-xl border border-gray-200 bg-white text-gray-600 hover:bg-gray-100 hover:text-blue-600 transition cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw size={18} className={loading ? "animate-spin text-blue-600" : ""} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsWalkinSelectorOpen(true)}
+            title="Walk-in / Issue Document"
+            aria-label="Walk-in / Issue Document"
+            className="walkin-trigger-btn !p-2.5 !min-w-0 !justify-center"
+          >
+            <UserPlus size={18} />
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm space-y-4 no-print">
-        <div className="flex justify-between items-center">
-          <div className="relative w-72">
+      <div className="bg-white rounded-2xl border-1 border-amber-300 p-6 shadow-sm space-y-4 no-print">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+          <div className="relative w-full max-w-sm">
             <Search size={16} className="absolute left-3 top-3 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search tracking no, type, or business..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-xl text-xs outline-none focus:border-amber-500"
-            />
+          <input
+  value={search}
+  onChange={e => setSearch(e.target.value)}
+  placeholder="Search tracking no, resident, type..."
+  className="w-full pl-9 pr-4 py-3 border-1 border-amber-300 rounded-xl text-xs outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 transition"
+/>
           </div>
+
+          {selectedIds.length > 0 && (
+            <button
+              onClick={handleDeleteSelected}
+              disabled={processing}
+              className="bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold px-3 py-2 rounded-xl shadow flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Trash2 size={15} />
+              <span>Delete Selected ({selectedIds.length})</span>
+            </button>
+          )}
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="bg-gray-100 text-gray-700 uppercase border-b">
-                <th className="p-3">Tracking No.</th>
-                <th className="p-3">Resident</th>
-                <th className="p-3">Document Type</th>
-                <th className="p-3">Date Requested</th>
-                <th className="p-3">Pickup Schedule</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Payment</th>
-                <th className="p-3">Action</th>
+              <tr className="bg-amber-200/70 text-black-700 uppercase border-b">
+                <th className="p-3 w-10 text-center">
+                  <input
+                    type="checkbox"
+                    onChange={handleSelectAll}
+                    checked={
+                      filtered.length > 0 &&
+                      filtered.every(req => selectedIds.includes(req.id))
+                    }
+                    className="rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                  />
+                </th>
+
+                {[
+                  'Tracking No.',
+                  'Resident Name',
+                  'Document Type',
+                  'Date Requested',
+                  'Pickup Schedule',
+                  'Status',
+                  'Payment',
+                  'Documents',
+                  'Action'
+                ].map(item => (
+                  <th key={item} className="p-3">{item}</th>
+                ))}
               </tr>
             </thead>
+
             <tbody className="divide-y divide-gray-200">
-              {filtered.length > 0 ? (
-                filtered.map((req) => {
+              {loading ? (
+                <RequestSkeleton />
+              ) : filtered.length > 0 ? (
+                filtered.map(req => {
                   const requiresPayment = isPaidDocument(req.document_type);
+                  const paid = isPaid(req);
+                  const done = isCompleted(req);
+                  const name = getResidentName(req, residents);
+                  const isSelected = selectedIds.includes(req.id);
+                  const status = (req.status || '').toLowerCase();
 
                   return (
-                    <tr key={req.id} className="hover:bg-gray-50">
-                      <td className="p-3 font-mono font-bold">{req.tracking_number}</td>
-                      <td className="p-3 font-medium">
-                        {req.residents ? `${req.residents.first_name} ${req.residents.last_name}` : 'Resident'}
+                    <tr
+                      key={req.id}
+                      className={`hover:bg-gray-50 ${isSelected ? 'bg-amber-50/50' : ''}`}
+                    >
+                      <td className="p-3 text-center align-middle">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleSelectOne(req.id)}
+                          className="rounded border-gray-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                        />
+                      </td>
+
+                      <td className="p-3 font-mono font-bold align-middle whitespace-nowrap text-amber-900">
+                        {req.tracking_number || 'N/A'}
+                      </td>
+
+                      <td className="p-3 font-bold text-zinc-900 align-middle">
+                        <div>{name}</div>
                         {req.business_name && (
-                          <span className="block text-[10px] text-amber-700 font-bold flex items-center gap-1 mt-0.5">
-                            <Building2 size={10} /> {req.business_name}
+                          <span className="block text-[10px] text-amber-700 font-bold mt-0.5">
+                            <Building2 size={10} className="inline mr-1" />
+                            {req.business_name}
                           </span>
                         )}
                       </td>
-                      <td className="p-3 uppercase font-semibold">{req.document_type?.replace(/_/g, ' ')}</td>
-                      <td className="p-3 text-gray-500">
-                        {new Date(req.created_at).toLocaleString('en-US', {
-                          month: 'short',
-                          day: 'numeric',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
+
+                      <td className="p-3 uppercase font-extrabold text-amber-800 align-middle">
+                        {req.document_type?.replace(/_/g, ' ')}
                       </td>
-                      <td className="p-3 font-bold text-blue-700">
+
+                      <td className="p-3 text-gray-500 align-middle whitespace-nowrap">
+                        {formatDate(req.created_at)}
+                      </td>
+
+                      <td className="p-3 font-bold text-blue-700 align-middle whitespace-nowrap">
                         {req.pickup_date ? (
                           <span className="bg-blue-50 text-blue-800 px-2.5 py-1 rounded-lg border border-blue-200 inline-block">
-                            {new Date(req.pickup_date).toLocaleString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              hour12: true
-                            })}
+                            {formatDate(req.pickup_date)}
                           </span>
                         ) : (
-                          <span className="text-gray-400 font-normal">Not Scheduled</span>
+                          <span className="text-gray-400 font-normal">
+                            Not Scheduled
+                          </span>
                         )}
                       </td>
-                      <td className="p-3">
-                        <span className={`px-2.5 py-1 rounded-full font-bold uppercase text-[10px] ${
-                          req.status === 'completed' ? 'bg-green-100 text-green-800' :
-                          req.status === 'ready_for_pickup' ? 'bg-blue-100 text-blue-800' :
-                          'bg-amber-100 text-amber-800'
-                        }`}>
-                          {req.status === 'ready_for_pickup' ? 'Ready for Pickup' : req.status}
+
+                      <td className="p-3 align-middle whitespace-nowrap">
+                        <span
+                          className={`inline-flex items-center justify-center px-2.5 py-1 rounded-full font-bold uppercase text-[10px] ${
+                            done
+                              ? 'bg-green-100 text-green-800'
+                              : status === 'ready_for_pickup'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {done
+                            ? 'Completed'
+                            : status === 'ready_for_pickup'
+                              ? 'Ready for Pickup'
+                              : status}
                         </span>
                       </td>
-                      <td className="p-3 font-bold">
+
+                      <td className="p-3 font-bold align-middle whitespace-nowrap">
                         {requiresPayment ? (
-                          req.is_paid ? (
-                            <span className="text-green-700">Paid (OR: {req.payment_reciept_no})</span>
+                          paid ? (
+                            <span className="text-green-700">
+                              Paid {getOR(req) ? `(OR: ${getOR(req)})` : ''}
+                            </span>
                           ) : (
-                            <span className="text-red-600">Unpaid (₱{req.fee_amount || 50})</span>
+                            <span className="text-red-600">
+                              Unpaid (₱{req.fee || req.fee_amount || 50})
+                            </span>
                           )
                         ) : (
-                          <span className="text-gray-500 font-normal">Free / No Fee</span>
+                          <span className="text-gray-500 font-normal">
+                            Free / No Fee
+                          </span>
                         )}
                       </td>
-                      <td className="p-3 space-x-1.5 flex items-center">
-                        <button
-                          onClick={() => {
-                            setViewCertReq(req);
-                            if (req.pickup_date) {
-                              const d = new Date(req.pickup_date);
-                              setPickupDate(d.toISOString().split('T')[0]);
-                              setPickupTime(d.toTimeString().slice(0, 5));
-                            }
-                          }}
-                          className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-2.5 py-1 rounded shadow flex items-center space-x-1 cursor-pointer"
-                        >
-                          <Eye size={12} />
-                          <span>View Document</span>
-                        </button>
 
-                        {req.status === 'ready_for_pickup' && (
-                          requiresPayment ? (
-                            <button 
-                              onClick={() => setSelectedPayReq(req)} 
-                              className="bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow cursor-pointer"
+                      <td className="p-3 align-middle whitespace-nowrap">
+                        <button
+                          onClick={() => setViewCertReq(req)}
+                          title="View / Print Document"
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-bold p-2 rounded-lg shadow inline-flex items-center justify-center cursor-pointer transition"
+                        >
+                          <Eye size={15} />
+                        </button>
+                      </td>
+
+                      <td className="p-3 align-middle whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleDeleteSingle(req.id, req.tracking_number)}
+                            disabled={processing}
+                            title="Delete Request"
+                            className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold p-2 rounded-lg shadow-sm transition cursor-pointer"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+
+                          {done ? (
+                            <button
+                              disabled
+                              title="Collected / Completed"
+                              className="bg-emerald-800 text-white font-bold p-2 rounded-lg shadow inline-flex items-center justify-center opacity-90 cursor-not-allowed"
                             >
-                              Pay & Release
+                              <Check size={15} />
+                            </button>
+                          ) : requiresPayment ? (
+                            <button
+                              onClick={() => setSelectedPayReq(req)}
+                              title="Pay & Release"
+                              className="bg-green-600 hover:bg-green-700 text-white font-bold p-2 rounded-lg shadow inline-flex items-center justify-center cursor-pointer"
+                            >
+                              <CheckCircle2 size={15} />
                             </button>
                           ) : (
-                            <button 
-                              onClick={() => handleDirectRelease(req.id)} 
-                              className="bg-green-600 hover:bg-green-700 text-white font-bold px-2.5 py-1 rounded shadow flex items-center space-x-1 cursor-pointer"
+                            <button
+                              onClick={() => handleDirectRelease(req)}
+                              title="Mark as Collected"
+                              className="bg-green-600 hover:bg-green-700 text-white font-bold p-2 rounded-lg shadow inline-flex items-center justify-center cursor-pointer"
                             >
-                              <CheckCircle2 size={12} />
-                              <span>Mark Collected</span>
+                              <CheckCircle2 size={15} />
                             </button>
-                          )
-                        )}
-
-                        {req.status === 'completed' && (
-                          <span className="text-gray-400 font-semibold italic text-[11px]">Released</span>
-                        )}
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={8} className="p-6 text-center text-gray-400">
-                    No requests found.
+                  <td colSpan={10} className="p-6 text-center text-gray-400 font-bold">
+                    No approved or completed requests found.
                   </td>
                 </tr>
               )}
@@ -266,306 +906,363 @@ export default function ManageRequests({ requests = [], onUpdateStatus }) {
         </div>
       </div>
 
-      {/* MODAL CONTAINER: SIDE-BY-SIDE VIEW & EDIT CERTIFICATE */}
-      {viewCertReq && (
-        <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-3 z-50 overflow-y-auto">
-          <div className="bg-transparent max-w-6xl w-full relative my-auto">
-            
-            <button 
-              onClick={() => setViewCertReq(null)}
-              className="absolute -top-10 right-0 text-white hover:text-gray-300 no-print bg-black/50 p-2 rounded-full cursor-pointer"
-            >
-              <X size={20} />
-            </button>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-              
-              {/* KALIWANG GILID (LEFT SIDE): COMPACT EDIT DETAILS + PICKUP CONTROLS */}
-              <div className="lg:col-span-5 space-y-3 no-print max-h-[90vh] overflow-y-auto pr-1">
-                <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xl space-y-2.5">
-                  <div className="flex items-center space-x-2 border-b pb-1.5 text-gray-800">
-                    <Edit3 size={15} className="text-blue-600" />
-                    <h4 className="text-xs font-black uppercase tracking-wider">
-                      Edit {isBusinessPermit ? 'Business Permit' : 'Certificate'} Details
-                    </h4>
-                  </div>
-
-                  <div className="space-y-2 text-xs">
-                    {/* 1. OWNER / RESIDENT FULL NAME */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Owner / Resident Full Name</label>
-                      <input
-                        type="text"
-                        value={certDetails.residentName}
-                        onChange={(e) => setCertDetails({...certDetails, residentName: e.target.value})}
-                        className="w-full border border-gray-300 rounded-lg p-2 text-xs font-bold focus:outline-none focus:border-blue-600"
-                      />
-                    </div>
-
-                    {/* BUSINESS PERMIT CLEARANCE SPECIFIC FIELDS */}
-                    {isBusinessPermit ? (
-                      <>
-                        {/* 2. BUSINESS NAME */}
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Business Name</label>
-                          <input
-                            type="text"
-                            value={certDetails.businessName}
-                            onChange={(e) => setCertDetails({...certDetails, businessName: e.target.value})}
-                            className="w-full border border-gray-300 rounded-lg p-2 text-xs font-bold text-blue-900 focus:outline-none focus:border-blue-600"
-                          />
-                        </div>
-
-                        {/* 3. NATURE / TYPE OF BUSINESS */}
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Nature / Type of Business</label>
-                          <input
-                            type="text"
-                            value={certDetails.businessType}
-                            onChange={(e) => setCertDetails({...certDetails, businessType: e.target.value})}
-                            className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:outline-none focus:border-blue-600"
-                          />
-                        </div>
-
-                        {/* 4. BUSINESS ADDRESS / LOCATION */}
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Business Address / Location</label>
-                          <input
-                            type="text"
-                            value={certDetails.businessAddress}
-                            onChange={(e) => setCertDetails({...certDetails, businessAddress: e.target.value})}
-                            className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:outline-none focus:border-blue-600"
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      /* REGULAR CERTIFICATE FIELD */
-                      <div>
-                        <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Purok / Resident Address</label>
-                        <input
-                          type="text"
-                          value={certDetails.purok}
-                          onChange={(e) => setCertDetails({...certDetails, purok: e.target.value})}
-                          className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:outline-none focus:border-blue-600"
-                        />
-                      </div>
-                    )}
-
-                    {/* 5. PURPOSE / REASON */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Purpose / Reason</label>
-                      <textarea
-                        rows={1}
-                        value={certDetails.purpose}
-                        onChange={(e) => setCertDetails({...certDetails, purpose: e.target.value})}
-                        className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:outline-none focus:border-blue-600 resize-none"
-                      />
-                    </div>
-
-                    {/* 6. DATE ISSUED TEXT */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Date Issued Text</label>
-                      <input
-                        type="text"
-                        value={certDetails.issueDate}
-                        onChange={(e) => setCertDetails({...certDetails, issueDate: e.target.value})}
-                        className="w-full border border-gray-300 rounded-lg p-2 text-xs focus:outline-none focus:border-blue-600"
-                      />
-                    </div>
-
-                    {/* 7. SIGNATORY (CAPTAIN NAME) */}
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Signatory (Captain Name)</label>
-                      <input
-                        type="text"
-                        value={certDetails.captainName}
-                        onChange={(e) => setCertDetails({...certDetails, captainName: e.target.value})}
-                        className="w-full border border-gray-300 rounded-lg p-2 text-xs font-bold focus:outline-none focus:border-blue-600"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* PICKUP SCHEDULE & PRINT CONTROL BOX */}
-                <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-xl space-y-3">
-                  <p className="text-[10px] font-black text-gray-800 uppercase tracking-wider">
-                    SET PICKUP SCHEDULE & READY FOR PRINT:
-                  </p>
-                  
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Pickup Date</label>
-                      <input 
-                        type="date" 
-                        value={pickupDate} 
-                        onChange={(e) => setPickupDate(e.target.value)} 
-                        className="w-full border border-gray-300 rounded-lg p-2 text-xs bg-white focus:outline-none focus:border-blue-600 font-medium" 
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-gray-600 mb-0.5">Pickup Time</label>
-                      <input 
-                        type="time" 
-                        value={pickupTime} 
-                        onChange={(e) => setPickupTime(e.target.value)} 
-                        className="w-full border border-gray-300 rounded-lg p-2 text-xs bg-white focus:outline-none focus:border-blue-600 font-medium" 
-                      />
-                    </div>
-                  </div>
-
-                  <div className="pt-2 border-t flex justify-end space-x-2">
-                    <button 
-                      onClick={() => setViewCertReq(null)} 
-                      className="px-3 py-1.5 border border-gray-300 text-xs rounded-xl font-bold text-gray-700 bg-white hover:bg-gray-100 transition cursor-pointer"
-                    >
-                      Close
-                    </button>
-                    <button 
-                      onClick={handlePrintAndReady} 
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded-xl font-bold shadow-md flex items-center space-x-1.5 transition cursor-pointer"
-                    >
-                      <Printer size={14} />
-                      <span>Print & Ready</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* KANANG GILID (RIGHT SIDE): PRINTABLE PREVIEW */}
-              <div className="lg:col-span-7">
-                <div id="printable-certificate" className="bg-white p-6 space-y-4 text-black border border-gray-200 rounded-2xl shadow-2xl">
-                  
-                  {/* HEADER SECTION */}
-                  <div className="text-center space-y-1 border-b-2 border-black pb-2">
-                    <p className="text-[10px] uppercase font-bold tracking-widest text-gray-700">Republic of the Philippines</p>
-                    <p className="text-[10px] uppercase font-semibold text-gray-700">Province of Zambales • Municipality of Castillejos</p>
-                    <h2 className="text-base font-black tracking-wider text-black pt-0.5">BARANGAY SAN AGUSTIN</h2>
-                    <h3 className="text-[11px] font-extrabold text-blue-900 uppercase tracking-wide">
-                      OFFICE OF THE PUNONG BARANGAY
-                    </h3>
-                    <h4 className="text-lg font-black uppercase text-black pt-1 tracking-wider underline underline-offset-4">
-                      {isBusinessPermit ? 'BARANGAY BUSINESS CLEARANCE' : viewCertReq.document_type?.replace(/_/g, ' ')}
-                    </h4>
-                  </div>
-
-                  {/* KUNG BUSINESS PERMIT CLEARANCE - KUSTOMISADONG BUSINESS LAYOUT */}
-                  {isBusinessPermit ? (
-                    <div className="space-y-3 text-xs text-black leading-relaxed">
-                      <p className="italic text-[10px] font-mono text-gray-600">Tracking No: {viewCertReq.tracking_number}</p>
-                      
-                      <p className="font-bold pt-0.5">TO WHOM IT MAY CONCERN:</p>
-                      
-                      <p className="text-justify indent-6 leading-relaxed">
-                        Clearance is hereby granted to the business establishment specified below pursuant to existing Barangay Tax Ordinances and regulations within the territorial jurisdiction of Barangay San Agustin, Castillejos, Zambales.
-                      </p>
-
-                      {/* BUSINESS SPECIFIC DETAILS BOX */}
-                      <div className="my-2 p-3 border-2 border-black bg-gray-50/50 rounded-xl space-y-1.5">
-                        <div className="grid grid-cols-12">
-                          <span className="col-span-4 font-bold uppercase text-[10px]">Business Name:</span>
-                          <span className="col-span-8 font-black text-xs uppercase text-blue-950">{certDetails.businessName}</span>
-                        </div>
-                        <div className="grid grid-cols-12">
-                          <span className="col-span-4 font-bold uppercase text-[10px]">Nature of Business:</span>
-                          <span className="col-span-8 font-bold uppercase text-[11px]">{certDetails.businessType}</span>
-                        </div>
-                        <div className="grid grid-cols-12">
-                          <span className="col-span-4 font-bold uppercase text-[10px]">Business Location:</span>
-                          <span className="col-span-8 font-semibold text-[11px]">{certDetails.businessAddress}</span>
-                        </div>
-                        <div className="grid grid-cols-12">
-                          <span className="col-span-4 font-bold uppercase text-[10px]">Owner / Operator:</span>
-                          <span className="col-span-8 font-bold uppercase text-[11px]">{certDetails.residentName}</span>
-                        </div>
-                      </div>
-
-                      <p className="text-justify indent-6 leading-relaxed">
-                        This Business Clearance is issued upon request of the interested party for <span className="font-bold italic">"{certDetails.purpose}"</span> and for securing municipal business permits and licenses.
-                      </p>
-
-                      <p className="text-justify indent-6 leading-relaxed text-[10px] text-gray-700 italic">
-                        Note: This clearance shall be revoked if there is any violation of municipal and barangay laws, ordinances, or public safety standards.
-                      </p>
-
-                      <p className="text-right pt-1 font-semibold">
-                        Given this {certDetails.issueDate} at Barangay San Agustin, Castillejos, Zambales.
-                      </p>
-                    </div>
-                  ) : (
-                    /* ORDINARY CERTIFICATE LAYOUT */
-                    <div className="space-y-3 text-xs text-black leading-relaxed">
-                      <p className="italic text-[10px] font-mono text-gray-600">Tracking No: {viewCertReq.tracking_number}</p>
-                      
-                      <p className="font-bold pt-0.5">TO WHOM IT MAY CONCERN:</p>
-                      
-                      <p className="text-justify indent-6 leading-relaxed">
-                        This is to certify that <span className="font-bold underline uppercase">{certDetails.residentName}</span>, 
-                        of legal age, is a permanent resident of Purok {certDetails.purok}, Barangay San Agustin, Castillejos, Zambales.
-                      </p>
-
-                      {viewCertReq.document_type?.toLowerCase().includes('indigency') && (
-                        <p className="text-justify indent-6 leading-relaxed">
-                          This further certifies that the above-named resident belongs to an indigent family in this community and is in need of financial or medical assistance.
-                        </p>
-                      )}
-
-                      <p className="text-justify indent-6 leading-relaxed">
-                        This certification/clearance is issued upon the request of the interested party for <span className="font-bold italic">"{certDetails.purpose}"</span> and for whatever legal intent it may serve.
-                      </p>
-
-                      <p className="text-right pt-3 font-semibold">
-                        Given this {certDetails.issueDate} at Barangay San Agustin, Castillejos, Zambales.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* SIGNATURE SECTION */}
-                  <div className="pt-4 flex justify-between items-end">
-                    <div className="w-32 text-center border border-gray-400 p-1.5 text-[9px] text-gray-500">
-                      Official Seal / Thumb Mark
-                    </div>
-                    <div className="w-48 space-y-0.5 text-center">
-                      <div className="border-b-2 border-black pb-0.5 font-bold uppercase text-xs">{certDetails.captainName}</div>
-                      <p className="text-[10px] text-gray-600 font-medium">Punong Barangay</p>
-                    </div>
-                  </div>
-
-                </div>
-              </div>
-
+      {isWalkinSelectorOpen && (
+        <div className="walkin-selection-overlay no-print">
+          <div className="walkin-selection-card">
+            <div className="flex justify-between items-center border-b pb-3 mb-3">
+              <h3 className="font-black text-sm uppercase tracking-wider text-gray-900">
+                Select Walk-in Document
+              </h3>
+              <button
+                onClick={() => setIsWalkinSelectorOpen(false)}
+                className="text-gray-400 hover:text-black p-1"
+              >
+                <X size={18} />
+              </button>
             </div>
 
+            <p className="text-xs text-gray-500 mb-2">
+              Choose a type of document for the walk-in resident:
+            </p>
+
+            <div className="walkin-grid-options">
+              {[
+                ['barangay_clearance', 'Barangay Clearance'],
+                ['certificate_of_indigency', 'Certificate of Indigency'],
+                ['certificate_of_residency', 'Certificate of Residency'],
+                ['business_permit', 'Barangay Business Clearance']
+              ].map(([type, label]) => (
+                <button
+                  key={type}
+                  onClick={() => handleSelectWalkinDoc(type)}
+                  className="walkin-option-btn"
+                >
+                  <FileText size={22} className="text-amber-500" />
+                  <span>{label}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* PAYMENT MODAL */}
+      {viewCertReq && (
+        <div className="request-modal no-print-wrapper">
+          <div className="request-modal-content relative">
+            <button
+              onClick={() => {
+                setViewCertReq(null);
+                setIsResidentDropdownOpen(false);
+              }}
+              className="request-modal-close text-white bg-black/50 hover:text-gray-300 p-2 rounded-full no-print"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="request-modal-grid grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+              <div className="lg:col-span-5 no-print edit-panel">
+                <div className="edit-card">
+                  <div className="edit-heading">
+                    <div className="edit-heading-icon">
+                      <Edit3 size={16} />
+                    </div>
+                    <div>
+                      <h4>Edit Document Details</h4>
+                      <p>Update information before printing</p>
+                    </div>
+                  </div>
+
+                  <div className="edit-form-scroll">
+                    <div className="edit-section-title">
+                      Certificate Information
+                    </div>
+
+                    <Field
+                      label="Owner / Resident Full Name"
+                      value={certDetails.residentName}
+                      onChange={value => {
+                        updateCert('residentName', value);
+                        if (viewCertReq.isWalkin) {
+                          setIsResidentDropdownOpen(true);
+                        }
+                      }}
+                    >
+                      {viewCertReq.isWalkin &&
+                        isResidentDropdownOpen &&
+                        filteredResidentsList.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full mt-1 max-h-40 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-xl z-50">
+                            {filteredResidentsList.map(res => {
+                              const fullName = [
+                                res.first_name,
+                                res.middle_name,
+                                res.last_name
+                              ].filter(Boolean).join(' ');
+
+                              return (
+                                <div
+                                  key={res.id}
+                                  onClick={() => {
+                                    updateCert('residentName', fullName);
+                                    updateCert('purok', res.purok || 'Purok 2');
+                                    setIsResidentDropdownOpen(false);
+                                  }}
+                                  className="p-2.5 hover:bg-amber-50 cursor-pointer text-xs border-b border-gray-100 flex justify-between items-center"
+                                >
+                                  <span className="font-bold text-gray-800">
+                                    {fullName}
+                                  </span>
+                                  <span className="text-[10px] text-gray-500 font-semibold">
+                                    {res.purok || 'Purok N/A'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                    </Field>
+
+                    {isBusinessPermit ? (
+                      <>
+                        <Field
+                          label="Business Name"
+                          value={certDetails.businessName}
+                          onChange={value => updateCert('businessName', value)}
+                        />
+                        <Field
+                          label="Nature / Type of Business"
+                          value={certDetails.businessType}
+                          onChange={value => updateCert('businessType', value)}
+                        />
+                        <Field
+                          label="Business Address"
+                          value={certDetails.businessAddress}
+                          onChange={value => updateCert('businessAddress', value)}
+                        />
+                      </>
+                    ) : (
+                      <Field
+                        label="Purok / Resident Address"
+                        value={certDetails.purok}
+                        onChange={value => updateCert('purok', value)}
+                      />
+                    )}
+
+                    <Field
+                      label="Purpose / Reason"
+                      value={certDetails.purpose}
+                      onChange={value => updateCert('purpose', value)}
+                      multiline
+                    />
+
+                    <Field
+                      label="Date Issued"
+                      value={certDetails.issueDate}
+                      onChange={value => updateCert('issueDate', value)}
+                    />
+
+                    <Field
+                      label="Signatory / Captain Name"
+                      value={certDetails.captainName}
+                      onChange={value => updateCert('captainName', value)}
+                    />
+
+                    {!viewCertReq.isWalkin && (
+                      <div className="pickup-section">
+                        <div className="edit-section-title">
+                          Pickup Schedule
+                        </div>
+
+                        {completed && (
+                          <div className="completed-notice">
+                            <CheckCircle2 size={14} />
+                            This request is completed. Schedule is locked.
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="edit-field">
+                            <label>Pickup Date</label>
+                            <input
+                              type="date"
+                              value={pickupDate}
+                              onChange={e => setPickupDate(e.target.value)}
+                              disabled={completed}
+                              className="edit-input"
+                            />
+                          </div>
+
+                          <div className="edit-field">
+                            <label>Pickup Time</label>
+                            <input
+                              type="time"
+                              value={pickupTime}
+                              onChange={e => setPickupTime(e.target.value)}
+                              disabled={completed}
+                              className="edit-input"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="edit-footer">
+                    <button
+                      onClick={() => setViewCertReq(null)}
+                      className="edit-close-button"
+                    >
+                      Close
+                    </button>
+
+                    <button
+                      onClick={handlePrintAndReady}
+                      disabled={processing}
+                      className="edit-print-button"
+                    >
+                      <Printer size={14} />
+                      {processing ? 'Processing...' : 'Print Document'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="lg:col-span-7 document-preview">
+                <div
+                  id="printable-certificate"
+                  className="certificate-paper bg-white text-black"
+                >
+                  <div className="certificate-header">
+                    <p>REPUBLIC OF THE PHILIPPINES</p>
+                    <p>PROVINCE OF ZAMBALES • MUNICIPALITY OF CASTILLEJOS</p>
+                    <h2>BARANGAY SAN AGUSTIN</h2>
+                    <h3>OFFICE OF THE PUNONG BARANGAY</h3>
+                    <h4>
+                      {isBusinessPermit
+                        ? 'BARANGAY BUSINESS CLEARANCE'
+                        : viewCertReq.document_type?.replace(/_/g, ' ')}
+                    </h4>
+                  </div>
+
+                  <div className="certificate-body">
+                    <p className="tracking-number">
+                      Tracking No: {viewCertReq.tracking_number}
+                      {viewCertReq.isWalkin && ' (WALK-IN)'}
+                    </p>
+
+                    <p className="font-bold">TO WHOM IT MAY CONCERN:</p>
+
+                    {isBusinessPermit ? (
+                      <>
+                        <p className="certificate-paragraph">
+                          Clearance is hereby granted to the business establishment
+                          specified below pursuant to applicable Barangay ordinances
+                          and regulations within the territorial jurisdiction of
+                          Barangay San Agustin, Castillejos, Zambales.
+                        </p>
+
+                        <div className="business-details">
+                          {[
+                            ['BUSINESS NAME:', certDetails.businessName],
+                            ['NATURE OF BUSINESS:', certDetails.businessType],
+                            ['BUSINESS LOCATION:', certDetails.businessAddress],
+                            ['OWNER / OPERATOR:', certDetails.residentName]
+                          ].map(([label, value]) => (
+                            <div key={label} className="business-detail-row">
+                              <span>{label}</span>
+                              <strong>{value}</strong>
+                            </div>
+                          ))}
+                        </div>
+
+                        <p className="certificate-paragraph">
+                          This Business Clearance is issued upon request of the
+                          interested party for <strong><em>
+                            "{certDetails.purpose}"
+                          </em></strong> and for securing necessary municipal
+                          business permits and licenses.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="certificate-paragraph">
+                          This is to certify that{' '}
+                          <strong className="underlined-name">
+                            {certDetails.residentName}
+                          </strong>
+                          , of legal age, is a resident of {certDetails.purok},
+                          Barangay San Agustin, Castillejos, Zambales.
+                        </p>
+
+                        <p className="certificate-paragraph">
+                          This certification is issued upon request of the
+                          interested party for <strong><em>
+                            "{certDetails.purpose}"
+                          </em></strong> and for whatever legal purpose it may serve.
+                        </p>
+                      </>
+                    )}
+
+                    <p className="certificate-date">
+                      Given this {certDetails.issueDate} at Barangay San Agustin,
+                      Castillejos, Zambales.
+                    </p>
+                  </div>
+
+                  <div className="certificate-signatures">
+                    <div className="official-seal">
+                      Official Seal / Thumb Mark
+                    </div>
+                    <div className="captain-signature">
+                      <strong>{certDetails.captainName}</strong>
+                      <span>Punong Barangay</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {selectedPayReq && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50 no-print">
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100000] no-print">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
-            <h3 className="font-bold text-base border-b pb-2 text-gray-800">Record Business Permit Payment</h3>
+            <h3 className="font-bold text-base border-b pb-2 text-gray-800">
+              Record Business Permit Payment
+            </h3>
+
             <p className="text-xs text-gray-500">
-              Enter Official Receipt (OR) Number for tracking <span className="font-mono font-bold text-black">{selectedPayReq.tracking_number}</span>.
+              Enter Official Receipt (OR) Number for tracking
+              <span className="font-mono font-bold text-black ml-1">
+                {selectedPayReq.tracking_number}
+              </span>.
             </p>
-            <input 
-              type="text" 
-              placeholder="Official Receipt (OR) No." 
-              value={orNo} 
-              onChange={(e) => setOrNo(e.target.value)} 
-              className="w-full border border-gray-300 rounded-xl p-2.5 text-xs outline-none focus:border-black font-mono" 
+
+            <input
+              value={orNo}
+              onChange={e => setOrNo(e.target.value)}
+              placeholder="Official Receipt (OR) No."
+              className="w-full border border-gray-300 rounded-xl p-2.5 text-xs outline-none focus:border-black font-mono"
             />
-            <div className="flex justify-end space-x-2 pt-2">
-              <button 
-                onClick={() => setSelectedPayReq(null)} 
-                className="px-3 py-1.5 border border-gray-300 text-xs rounded-lg font-bold text-gray-700 hover:bg-gray-50 cursor-pointer"
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setSelectedPayReq(null);
+                  setOrNo('');
+                }}
+                disabled={processing}
+                className="px-3 py-1.5 border border-gray-300 text-xs rounded-lg font-bold text-gray-700 hover:bg-gray-50"
               >
                 Cancel
               </button>
-              <button 
-                onClick={handleReleasePayment} 
-                className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs rounded-lg font-bold shadow cursor-pointer"
+
+              <button
+                onClick={handleReleasePayment}
+                disabled={processing}
+                className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs rounded-lg font-bold shadow"
               >
-                Confirm Release
+                {processing ? 'Saving...' : 'Confirm Release'}
               </button>
             </div>
           </div>

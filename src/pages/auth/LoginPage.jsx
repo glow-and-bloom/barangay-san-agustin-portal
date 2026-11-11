@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import { logAdminActivity } from '../../lib/logger';
 
 export default function LoginPage({ onNavigate, onLoginSuccess }) {
   const [email, setEmail] = useState('');
@@ -21,6 +22,17 @@ export default function LoginPage({ onNavigate, onLoginSuccess }) {
       setErrorMsg(error.message);
       setLoading(false);
     } else if (data.user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profile && (profile.role === 'admin' || profile.role === 'staff')) {
+        const adminName = `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || profile.email;
+        await logAdminActivity('Authentication', 'Admin Signed In', adminName, 'Successfully authenticated into the administrative panel.');
+      }
+
       setLoading(false);
       if (onLoginSuccess) onLoginSuccess(data.user.id);
     }

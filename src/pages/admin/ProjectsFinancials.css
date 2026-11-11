@@ -1,0 +1,27 @@
+.project-modal {
+  transform: translateX(130px); /* Itinulak pa pakanan para lumayo sa sidebar */
+  padding-left: 30px;
+}
+
+.project-modal-header {
+  position: relative;
+}
+
+.project-modal-title {
+  margin-left: 10px;
+  padding-left: 2px;
+}
+
+@media (max-width: 768px) {
+  .project-modal {
+    transform: translateX(0);
+    padding: 18px !important;
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  .project-modal-title {
+    margin-left: 6px;
+    font-size: 14px;
+  }
+}
